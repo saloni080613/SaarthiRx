@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import PrescriptionView from './pages/PrescriptionView';
 import Reminder from './pages/Reminder';
 
+
 function AnimatedRoutes() {
   const location = useLocation();
 
@@ -34,6 +35,7 @@ function AnimatedRoutes() {
 }
 
 function App() {
+ 
   return (
     <AppProvider>
       <VoiceProvider>
