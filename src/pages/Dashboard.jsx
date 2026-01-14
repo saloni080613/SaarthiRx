@@ -9,11 +9,11 @@ import GlobalActionButton from '../components/GlobalActionButton';
 
 const Dashboard = () => {
     const navigate = useNavigate();
-    const { language, setCurrentPageContent } = useApp();
+    const { language, setCurrentPageContent, user } = useApp();
     const { announcePageAndAction } = useVoiceButler();
 
-    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-    const userName = userData.name || 'Friend';
+    // Use user from context (synced with Firestore)
+    const userName = user?.name || 'Friend';
 
     const greetings = {
         'en-US': `Hello, ${userName}!`,

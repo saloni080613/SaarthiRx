@@ -8,6 +8,8 @@ import { validateIndianPhone } from '../utils/phoneValidation';
 import { parseSpokenAge, parseSpokenPhone } from '../utils/numberParser';
 import { slideUpTransition } from '../utils/animations';
 import DualActionButtons from '../components/DualActionButtons';
+import { setupRecaptcha, sendOtp, verifyOtp, getAuthErrorMessage } from '../services/authService';
+import { getUserFromFirestore, saveUserToFirestore, isProfileComplete } from '../services/userService';
 
 // Elder-friendly UI translations
 const uiTranslations = {
@@ -19,7 +21,12 @@ const uiTranslations = {
         male: 'Male',
         female: 'Female',
         other: 'Other',
-        enterOtp: 'Enter 6-digit OTP'
+        enterOtp: 'Enter 6-digit OTP',
+        sendingOtp: 'Sending OTP...',
+        verifyingOtp: 'Verifying...',
+        savingProfile: 'Saving your profile...',
+        otpSent: 'OTP sent to your phone!',
+        welcomeBack: 'Welcome back!'
     },
     'hi-IN': {
         stepOf: 'चरण {current} / {total}',
@@ -29,7 +36,12 @@ const uiTranslations = {
         male: 'पुरुष',
         female: 'महिला',
         other: 'अन्य',
-        enterOtp: '6 अंकों का OTP दर्ज करें'
+        enterOtp: '6 अंकों का OTP दर्ज करें',
+        sendingOtp: 'OTP भेज रहे हैं...',
+        verifyingOtp: 'जाँच हो रही है...',
+        savingProfile: 'आपकी प्रोफ़ाइल सहेज रहे हैं...',
+        otpSent: 'आपके फ़ोन पर OTP भेजा गया!',
+        welcomeBack: 'वापस स्वागत है!'
     },
     'mr-IN': {
         stepOf: 'चरण {current} / {total}',
@@ -39,7 +51,12 @@ const uiTranslations = {
         male: 'पुरुष',
         female: 'महिला',
         other: 'इतर',
-        enterOtp: '6 अंकी OTP टाका'
+        enterOtp: '6 अंकी OTP टाका',
+        sendingOtp: 'OTP पाठवत आहे...',
+        verifyingOtp: 'तपासत आहे...',
+        savingProfile: 'तुमची प्रोफाइल सेव करत आहे...',
+        otpSent: 'तुमच्या फोनवर OTP पाठवला!',
+        welcomeBack: 'परत स्वागत आहे!'
     }
 };
 
@@ -53,49 +70,69 @@ const getGenderOptions = (lang) => {
     ];
 };
 
+// Questions for new user registration (phone and OTP are always asked)
 const questions = [
     { id: 'phone', text: { 'en-US': 'What is your phone number?', 'hi-IN': 'आपका फोन नंबर क्या है?', 'mr-IN': 'तुमचा फोन नंबर काय आहे?' } },
     { id: 'otp', text: { 'en-US': 'Enter the OTP sent to your phone', 'hi-IN': 'आपके फोन पर भेजा गया OTP दर्ज करें', 'mr-IN': 'तुमच्या फोनवर पाठवलेला OTP टाका' } },
-    { id: 'name', text: { 'en-US': 'What is your name?', 'hi-IN': 'आपका नाम क्या है?', 'mr-IN': 'तुमचे नाव काय आहे?' } },
-    { id: 'gender', text: { 'en-US': 'Are you Male or Female?', 'hi-IN': 'आप पुरुष हैं या महिला?', 'mr-IN': 'तुम्ही पुरुष आहात की स्त्री?' }, hasOptions: true },
-    { id: 'age', text: { 'en-US': 'How old are you?', 'hi-IN': 'आपकी उम्र क्या है?', 'mr-IN': 'तुमचे वय किती आहे?' } }
+    { id: 'name', text: { 'en-US': 'What is your name?', 'hi-IN': 'आपका नाम क्या है?', 'mr-IN': 'तुमचे नाव काय आहे?' }, newUserOnly: true },
+    { id: 'gender', text: { 'en-US': 'Are you Male or Female?', 'hi-IN': 'आप पुरुष हैं या महिला?', 'mr-IN': 'तुम्ही पुरुष आहात की स्त्री?' }, hasOptions: true, newUserOnly: true },
+    { id: 'age', text: { 'en-US': 'How old are you?', 'hi-IN': 'आपकी उम्र क्या है?', 'mr-IN': 'तुमचे वय किती आहे?' }, newUserOnly: true }
 ];
 
 const Register = () => {
     const navigate = useNavigate();
-    const { language } = useApp();
+    const { language, saveUser, setLanguage } = useApp();
     const { transcript, resetTranscript, isListening, isSpeaking, speak, stopListening } = useVoice();
 
     const [currentQuestion, setCurrentQuestion] = useState(0);
     const [answers, setAnswers] = useState({});
     const [tempAnswer, setTempAnswer] = useState('');
     const [validationError, setValidationError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingMessage, setLoadingMessage] = useState('');
+    const [isNewUser, setIsNewUser] = useState(true);
+    const [firebaseUser, setFirebaseUser] = useState(null);
+    
     const hasSpokenRef = useRef(false);
+    const recaptchaInitialized = useRef(false);
 
     // Get translations for current language
     const t = uiTranslations[language] || uiTranslations['en-US'];
     const genderOptions = getGenderOptions(language);
 
-    const progress = ((currentQuestion + 1) / questions.length) * 100;
-    const question = questions[currentQuestion];
-    const questionText = question.text[language] || question.text['en-US'];
+    // Filter questions based on user status
+    const activeQuestions = questions.filter(q => !q.newUserOnly || isNewUser);
+    const progress = ((currentQuestion + 1) / activeQuestions.length) * 100;
+    const question = activeQuestions[currentQuestion];
+    const questionText = question?.text[language] || question?.text['en-US'];
 
     // Format step text
     const stepText = t.stepOf
         .replace('{current}', currentQuestion + 1)
-        .replace('{total}', questions.length);
+        .replace('{total}', activeQuestions.length);
+
+    // Initialize reCAPTCHA on mount
+    useEffect(() => {
+        if (!recaptchaInitialized.current) {
+            try {
+                setupRecaptcha('recaptcha-container');
+                recaptchaInitialized.current = true;
+            } catch (error) {
+                console.error('reCAPTCHA setup error:', error);
+            }
+        }
+    }, []);
 
     // Auto-speak question on load and when question changes
     useEffect(() => {
-        // Small delay to let page render on first load
+        if (!question) return;
+        
         const timer = setTimeout(() => {
             speak(questionText);
         }, currentQuestion === 0 && !hasSpokenRef.current ? 800 : 300);
         hasSpokenRef.current = true;
         return () => clearTimeout(timer);
-    }, [currentQuestion, questionText, speak]);
-
-
+    }, [currentQuestion, questionText, speak, question]);
 
     // Capture voice input
     useEffect(() => {
@@ -118,8 +155,117 @@ const Register = () => {
         speak(questionText);
     };
 
-    const handleNext = () => {
-        if (!tempAnswer) return;
+    // Handle sending OTP
+    const handleSendOtp = async (phoneNumber) => {
+        setIsLoading(true);
+        setLoadingMessage(t.sendingOtp);
+        
+        try {
+            await sendOtp(phoneNumber);
+            triggerSuccess();
+            speak(t.otpSent);
+            return true;
+        } catch (error) {
+            triggerAlert();
+            const errorMsg = getAuthErrorMessage(error, language);
+            speak(errorMsg);
+            setValidationError(errorMsg);
+            
+            // Re-initialize reCAPTCHA
+            try {
+                setupRecaptcha('recaptcha-container');
+            } catch (e) {
+                console.error('reCAPTCHA re-init error:', e);
+            }
+            
+            return false;
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage('');
+        }
+    };
+
+    // Handle verifying OTP
+    const handleVerifyOtp = async (otp) => {
+        setIsLoading(true);
+        setLoadingMessage(t.verifyingOtp);
+        
+        try {
+            const user = await verifyOtp(otp);
+            setFirebaseUser(user);
+            triggerSuccess();
+            
+            // Check if user profile exists in Firestore
+            const existingProfile = await getUserFromFirestore(user.uid);
+            
+            if (existingProfile && isProfileComplete(existingProfile)) {
+                // Returning user - load profile and go to dashboard
+                setIsNewUser(false);
+                speak(t.welcomeBack);
+                
+                // Apply saved language preference
+                if (existingProfile.language) {
+                    setLanguage(existingProfile.language);
+                }
+                
+                // Save to context and localStorage
+                saveUser(existingProfile);
+                
+                // Navigate to dashboard after brief delay
+                setTimeout(() => {
+                    navigate('/dashboard');
+                }, 1500);
+                
+                return false; // Don't continue to next question
+            } else {
+                // New user - continue with profile questions
+                setIsNewUser(true);
+                return true;
+            }
+        } catch (error) {
+            triggerAlert();
+            const errorMsg = getAuthErrorMessage(error, language);
+            speak(errorMsg);
+            setValidationError(errorMsg);
+            return false;
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage('');
+        }
+    };
+
+    // Handle saving profile to Firestore
+    const handleSaveProfile = async (userData) => {
+        setIsLoading(true);
+        setLoadingMessage(t.savingProfile);
+        
+        try {
+            const profileData = {
+                ...userData,
+                language // Store current language preference
+            };
+            
+            await saveUserToFirestore(firebaseUser.uid, profileData);
+            
+            // Save to context and localStorage
+            saveUser(profileData);
+            
+            triggerSuccess();
+            navigate('/dashboard');
+        } catch (error) {
+            console.error('Error saving profile:', error);
+            triggerAlert();
+            // Still navigate - data is in localStorage at least
+            saveUser(userData);
+            navigate('/dashboard');
+        } finally {
+            setIsLoading(false);
+            setLoadingMessage('');
+        }
+    };
+
+    const handleNext = async () => {
+        if (!tempAnswer || isLoading) return;
 
         let processedAnswer = tempAnswer;
 
@@ -142,6 +288,14 @@ const Register = () => {
                 return;
             }
             processedAnswer = validation.formatted;
+            
+            // Send OTP
+            const success = await handleSendOtp(processedAnswer);
+            if (!success) {
+                setTempAnswer('');
+                resetTranscript();
+                return;
+            }
         } else if (question.id === 'otp') {
             // Extract only digits from OTP input
             const otpDigits = tempAnswer.replace(/\D/g, '');
@@ -159,6 +313,17 @@ const Register = () => {
                 return;
             }
             processedAnswer = otpDigits;
+            
+            // Verify OTP
+            const shouldContinue = await handleVerifyOtp(processedAnswer);
+            if (!shouldContinue) {
+                // Either error or returning user (navigating to dashboard)
+                if (!firebaseUser) {
+                    setTempAnswer('');
+                    resetTranscript();
+                }
+                return;
+            }
         } else if (question.id === 'age') {
             processedAnswer = parseSpokenAge(tempAnswer, language);
             const age = parseInt(processedAnswer, 10);
@@ -186,12 +351,11 @@ const Register = () => {
         resetTranscript();
         setValidationError('');
 
-        if (currentQuestion < questions.length - 1) {
+        if (currentQuestion < activeQuestions.length - 1) {
             setCurrentQuestion(currentQuestion + 1);
         } else {
-            // Save to localStorage (Firebase will be added later)
-            localStorage.setItem('userData', JSON.stringify({ ...newAnswers, language }));
-            navigate('/dashboard');
+            // Save to Firestore
+            await handleSaveProfile(newAnswers);
         }
     };
 
@@ -209,6 +373,34 @@ const Register = () => {
             className="min-h-screen flex flex-col p-6 pb-40 relative overflow-y-auto"
             {...slideUpTransition}
         >
+            {/* reCAPTCHA Container - Invisible */}
+            <div id="recaptcha-container"></div>
+
+            {/* Loading Overlay */}
+            <AnimatePresence>
+                {isLoading && (
+                    <motion.div
+                        className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                    >
+                        <motion.div
+                            className="bg-white rounded-2xl p-8 shadow-premium-lg flex flex-col items-center"
+                            initial={{ scale: 0.9 }}
+                            animate={{ scale: 1 }}
+                        >
+                            <motion.div
+                                className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full"
+                                animate={{ rotate: 360 }}
+                                transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                            />
+                            <p className="mt-4 text-xl font-medium text-gray-700">{loadingMessage}</p>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             {/* Progress Bar */}
             <div className="mb-8">
                 <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -230,109 +422,113 @@ const Register = () => {
 
             {/* Question Card */}
             <AnimatePresence mode="wait">
-                <motion.div
-                    key={currentQuestion}
-                    className="flex-1 flex flex-col justify-center"
-                    initial={{ opacity: 0, x: 50 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: -50 }}
-                    transition={{ duration: 0.3 }}
-                >
-                    {/* Question Text */}
-                    <div className="text-center mb-8">
-                        <motion.h2
-                            className="text-3xl md:text-4xl font-display font-bold text-gray-800 mb-4"
-                            initial={{ scale: 0.9 }}
-                            animate={{ scale: 1 }}
-                            transition={{ delay: 0.1 }}
-                        >
-                            {questionText}
-                        </motion.h2>
-                    </div>
-
-                    {/* Answer Input */}
-                    {question.hasOptions ? (
-                        /* Multiple Choice Options - Localized */
-                        <div className="space-y-3 mb-8">
-                            {genderOptions.map((option) => (
-                                <motion.button
-                                    key={option.value}
-                                    onClick={() => handleOptionClick(option.value)}
-                                    className={`
-                                        w-full min-h-button p-4 rounded-xl
-                                        border-2 transition-all
-                                        ${tempAnswer === option.value
-                                            ? 'border-primary bg-primary text-white shadow-premium'
-                                            : 'border-gray-300 bg-white text-gray-800 hover:border-primary'
-                                        }
-                                    `}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
-                                    <div className="text-2xl font-medium">{option.label}</div>
-                                </motion.button>
-                            ))}
-                        </div>
-                    ) : (
-                        /* Text/Voice Input */
-                        <div className="mb-8">
-                            <motion.input
-                                type="text"
-                                value={tempAnswer}
-                                onChange={handleInputChange}
-                                placeholder={t.tapMic}
-                                className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-2xl md:text-3xl font-medium text-gray-800 text-center focus:border-primary focus:outline-none transition-colors"
-                                animate={tempAnswer ? { borderColor: '#FF8C00' } : {}}
-                            />
-                        </div>
-                    )}
-
-                    {/* Validation Error */}
-                    {validationError && (
-                        <motion.div
-                            className="mb-4 p-4 bg-red-50 border-2 border-red-300 rounded-xl"
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                        >
-                            <p className="text-xl text-red-700 font-medium">❌ {validationError}</p>
-                        </motion.div>
-                    )}
-
-                    {/* Next Button - Pulses when input is valid */}
-                    <motion.button
-                        onClick={handleNext}
-                        disabled={!tempAnswer}
-                        className={`
-                            w-full min-h-button rounded-xl font-bold text-2xl
-                            transition-all
-                            ${tempAnswer
-                                ? 'bg-gradient-to-r from-primary to-primary-light text-white shadow-premium'
-                                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                            }
-                        `}
-                        whileHover={tempAnswer ? { scale: 1.02 } : {}}
-                        whileTap={tempAnswer ? { scale: 0.98 } : {}}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={tempAnswer ? {
-                            opacity: 1,
-                            y: 0,
-                            scale: [1, 1.03, 1],
-                            boxShadow: [
-                                '0 4px 20px rgba(255, 107, 53, 0.3)',
-                                '0 4px 30px rgba(255, 107, 53, 0.5)',
-                                '0 4px 20px rgba(255, 107, 53, 0.3)'
-                            ]
-                        } : { opacity: 1, y: 0 }}
-                        transition={tempAnswer ? {
-                            scale: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' },
-                            boxShadow: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' },
-                            opacity: { delay: 0.2 },
-                            y: { delay: 0.2 }
-                        } : { delay: 0.2 }}
+                {question && (
+                    <motion.div
+                        key={currentQuestion}
+                        className="flex-1 flex flex-col justify-center"
+                        initial={{ opacity: 0, x: 50 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -50 }}
+                        transition={{ duration: 0.3 }}
                     >
-                        {currentQuestion < questions.length - 1 ? t.next : t.complete}
-                    </motion.button>
-                </motion.div>
+                        {/* Question Text */}
+                        <div className="text-center mb-8">
+                            <motion.h2
+                                className="text-3xl md:text-4xl font-display font-bold text-gray-800 mb-4"
+                                initial={{ scale: 0.9 }}
+                                animate={{ scale: 1 }}
+                                transition={{ delay: 0.1 }}
+                            >
+                                {questionText}
+                            </motion.h2>
+                        </div>
+
+                        {/* Answer Input */}
+                        {question.hasOptions ? (
+                            /* Multiple Choice Options - Localized */
+                            <div className="space-y-3 mb-8">
+                                {genderOptions.map((option) => (
+                                    <motion.button
+                                        key={option.value}
+                                        onClick={() => handleOptionClick(option.value)}
+                                        className={`
+                                            w-full min-h-button p-4 rounded-xl
+                                            border-2 transition-all
+                                            ${tempAnswer === option.value
+                                                ? 'border-primary bg-primary text-white shadow-premium'
+                                                : 'border-gray-300 bg-white text-gray-800 hover:border-primary'
+                                            }
+                                        `}
+                                        whileHover={{ scale: 1.02 }}
+                                        whileTap={{ scale: 0.98 }}
+                                    >
+                                        <div className="text-2xl font-medium">{option.label}</div>
+                                    </motion.button>
+                                ))}
+                            </div>
+                        ) : (
+                            /* Text/Voice Input */
+                            <div className="mb-8">
+                                <motion.input
+                                    type={question.id === 'otp' ? 'tel' : 'text'}
+                                    inputMode={question.id === 'phone' || question.id === 'otp' || question.id === 'age' ? 'numeric' : 'text'}
+                                    value={tempAnswer}
+                                    onChange={handleInputChange}
+                                    placeholder={question.id === 'otp' ? t.enterOtp : t.tapMic}
+                                    className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-2xl md:text-3xl font-medium text-gray-800 text-center focus:border-primary focus:outline-none transition-colors"
+                                    animate={tempAnswer ? { borderColor: '#FF8C00' } : {}}
+                                    maxLength={question.id === 'otp' ? 6 : question.id === 'phone' ? 10 : undefined}
+                                />
+                            </div>
+                        )}
+
+                        {/* Validation Error */}
+                        {validationError && (
+                            <motion.div
+                                className="mb-4 p-4 bg-red-50 border-2 border-red-300 rounded-xl"
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                            >
+                                <p className="text-xl text-red-700 font-medium">❌ {validationError}</p>
+                            </motion.div>
+                        )}
+
+                        {/* Next Button - Pulses when input is valid */}
+                        <motion.button
+                            onClick={handleNext}
+                            disabled={!tempAnswer || isLoading}
+                            className={`
+                                w-full min-h-button rounded-xl font-bold text-2xl
+                                transition-all
+                                ${tempAnswer && !isLoading
+                                    ? 'bg-gradient-to-r from-primary to-primary-light text-white shadow-premium'
+                                    : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                                }
+                            `}
+                            whileHover={tempAnswer && !isLoading ? { scale: 1.02 } : {}}
+                            whileTap={tempAnswer && !isLoading ? { scale: 0.98 } : {}}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={tempAnswer && !isLoading ? {
+                                opacity: 1,
+                                y: 0,
+                                scale: [1, 1.03, 1],
+                                boxShadow: [
+                                    '0 4px 20px rgba(255, 107, 53, 0.3)',
+                                    '0 4px 30px rgba(255, 107, 53, 0.5)',
+                                    '0 4px 20px rgba(255, 107, 53, 0.3)'
+                                ]
+                            } : { opacity: 1, y: 0 }}
+                            transition={tempAnswer && !isLoading ? {
+                                scale: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' },
+                                boxShadow: { duration: 1.5, repeat: Infinity, ease: 'easeInOut' },
+                                opacity: { delay: 0.2 },
+                                y: { delay: 0.2 }
+                            } : { delay: 0.2 }}
+                        >
+                            {currentQuestion < activeQuestions.length - 1 ? t.next : t.complete}
+                        </motion.button>
+                    </motion.div>
+                )}
             </AnimatePresence>
 
             {/* Dark Overlay + Listening Modal - Tap anywhere to dismiss */}
@@ -404,5 +600,3 @@ const Register = () => {
 };
 
 export default Register;
-
-

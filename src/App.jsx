@@ -7,7 +7,6 @@ import PremiumLayout from './components/PremiumLayout';
 import VoiceNavigation from './components/VoiceNavigation';
 import NamasteGateway from './pages/NamasteGateway';
 import Welcome from './pages/Welcome';
-import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import PrescriptionView from './pages/PrescriptionView';
@@ -23,7 +22,6 @@ function AnimatedRoutes() {
         {/* NamasteGateway route disabled - keeping file for potential future use */}
         {/* <Route path="/namaste" element={<NamasteGateway />} /> */}
         <Route path="/" element={<Welcome />} />
-        <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/prescription/:id" element={<PrescriptionView />} />
