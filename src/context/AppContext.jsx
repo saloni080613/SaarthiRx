@@ -36,7 +36,7 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
             setFirebaseUser(fbUser);
-            
+
             if (fbUser) {
                 // User is signed in - try to load profile from Firestore
                 try {
@@ -44,7 +44,7 @@ export const AppProvider = ({ children }) => {
                     if (profile) {
                         setUserState(profile);
                         localStorage.setItem('saarthi_user', JSON.stringify(profile));
-                        
+
                         // Apply saved language preference
                         if (profile.language) {
                             setLanguageState(profile.language);
@@ -55,7 +55,7 @@ export const AppProvider = ({ children }) => {
                     console.error('Error loading user profile:', error);
                 }
             }
-            
+
             setIsAuthLoading(false);
         });
 
@@ -96,6 +96,28 @@ export const AppProvider = ({ children }) => {
         return firebaseUser !== null || user !== null;
     };
 
+    // Saved medicines state (Phase 5: Medicine Safety Shield)
+    const [savedMedicines, setSavedMedicines] = useState(() => {
+        const saved = localStorage.getItem('saarthi_medicines');
+        return saved ? JSON.parse(saved) : [];
+    });
+
+    // Add medicine to saved list
+    const addMedicine = (medicine) => {
+        const updated = [...savedMedicines, { ...medicine, addedAt: Date.now() }];
+        setSavedMedicines(updated);
+        localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
+    };
+
+    // Get all saved medicines
+    const getMedicines = () => savedMedicines;
+
+    // Clear all medicines
+    const clearMedicines = () => {
+        setSavedMedicines([]);
+        localStorage.removeItem('saarthi_medicines');
+    };
+
     const value = {
         language,
         setLanguage,
@@ -108,6 +130,10 @@ export const AppProvider = ({ children }) => {
         firebaseUser,
         isAuthLoading,
         isAuthenticated,
+        savedMedicines,
+        addMedicine,
+        getMedicines,
+        clearMedicines,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

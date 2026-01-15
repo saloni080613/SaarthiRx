@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useApp } from '../context/AppContext';
+import { triggerHaptic } from '../utils/haptics';
 
 export const useVoice = () => {
     const { language, currentPageContent } = useApp();
@@ -12,6 +13,8 @@ export const useVoice = () => {
     const synthRef = useRef(window.speechSynthesis);
     const speechQueueRef = useRef([]);
     const currentUtteranceRef = useRef(null);
+
+    const silenceTimerRef = useRef(null);
 
     // Initialize Speech Recognition
     useEffect(() => {
@@ -39,16 +42,29 @@ export const useVoice = () => {
                 if (finalTranscript) {
                     setTranscript(finalTranscript.trim());
                 }
+
+                // Auto-stop detection: Reset timer on every result (speech detected)
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+                // 1.5 seconds of silence stops the listener (faster for elderly)
+                silenceTimerRef.current = setTimeout(() => {
+                    console.log('🤫 Silence detected, auto-stopping mic...');
+                    // Success haptic chime: [50, 50] pattern
+                    triggerHaptic([50, 50]);
+                    if (recognitionRef.current) recognitionRef.current.stop();
+                }, 1500);
             };
 
             recognition.onerror = (event) => {
                 console.error('Speech recognition error:', event.error);
                 setError(event.error);
                 setIsListening(false);
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             };
 
             recognition.onend = () => {
                 setIsListening(false);
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             };
 
             recognitionRef.current = recognition;
@@ -60,28 +76,48 @@ export const useVoice = () => {
             if (recognitionRef.current) {
                 recognitionRef.current.stop();
             }
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
     }, [language]);
 
     // Start listening
     const startListening = useCallback(() => {
+        // STRICT MUTEX: Do not allow listening if speaking
+        if (isSpeaking) {
+            console.warn('🔇 Mic blocked: TTS is currently active');
+            return;
+        }
+
         if (recognitionRef.current && !isListening) {
             setTranscript('');
             setError(null);
             try {
                 recognitionRef.current.start();
+
+                // Start a 5-second "no speech" timeout
+                // If user doesn't say anything, auto-stop after 5 seconds
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = setTimeout(() => {
+                    console.log('⏱️ No speech detected for 5s, auto-stopping...');
+                    if (recognitionRef.current) recognitionRef.current.stop();
+                }, 5000);
+
             } catch (err) {
                 console.error('Error starting recognition:', err);
             }
         }
-    }, [isListening]);
+    }, [isListening, isSpeaking]);
 
     // Stop listening
     const stopListening = useCallback(() => {
-        if (recognitionRef.current && isListening) {
-            recognitionRef.current.stop();
+        if (recognitionRef.current) { // && isListening removed to allow force stop
+            try {
+                recognitionRef.current.stop();
+            } catch (e) {
+                // Ignore error if already stopped
+            }
         }
-    }, [isListening]);
+    }, []); // Removed dependency on isListening to allow force stop anytime
 
     // Text-to-Speech function
     const speak = useCallback((text, options = {}) => {
@@ -91,12 +127,23 @@ export const useVoice = () => {
                 return;
             }
 
+            // STRICT MUTEX: Stop listening the microsecond speak is called
+            if (recognitionRef.current) {
+                try {
+                    recognitionRef.current.stop();
+                    setIsListening(false);
+                    console.log('🛑 Mic forced off for TTS');
+                } catch (e) {
+                    console.warn('Error stopping mic for TTS:', e);
+                }
+            }
+
             // Cancel any ongoing speech
             synthRef.current.cancel();
 
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = options.lang || language;
-            utterance.rate = options.rate || 0.9; // Slightly slower for elderly users
+            utterance.rate = options.rate || 0.9;
             utterance.pitch = options.pitch || 1;
             utterance.volume = options.volume || 1;
 
@@ -121,7 +168,9 @@ export const useVoice = () => {
                 setIsSpeaking(false);
                 currentUtteranceRef.current = null;
                 console.error('Speech synthesis error:', event);
-                reject(event);
+
+                // Resolve anyway to prevent hanging
+                resolve();
             };
 
             currentUtteranceRef.current = utterance;
@@ -174,6 +223,11 @@ export const useVoice = () => {
         return { type: 'UNKNOWN', text };
     }, []);
 
+    // Reset transcript for clean state between inputs
+    const resetTranscript = useCallback(() => {
+        setTranscript('');
+    }, []);
+
     return {
         isListening,
         isSpeaking,
@@ -185,5 +239,6 @@ export const useVoice = () => {
         stopSpeaking,
         repeatContent,
         parseCommand,
+        resetTranscript,
     };
 };

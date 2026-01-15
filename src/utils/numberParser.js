@@ -60,6 +60,18 @@ const ENGLISH_NUMBERS = {
     'sixty': 60, 'seventy': 70, 'eighty': 80, 'ninety': 90, 'hundred': 100
 };
 
+// Transliterated English numbers in Devanagari (commonly spoken by Indians)
+// e.g., "वन टू थ्री" = "one two three"
+const TRANSLITERATED_ENGLISH = {
+    'वन': 1, 'टू': 2, 'थ्री': 3, 'श्री': 3, 'फोर': 4, 'फ़ोर': 4,
+    'फाइव': 5, 'फाईव': 5, 'फाईव्ह': 5, 'फ़ाइव': 5,
+    'सिक्स': 6, 'सीक्स': 6,
+    'सेवन': 7, 'सेव्हन': 7,
+    'एट': 8, 'एइट': 8,
+    'नाइन': 9, 'नाईन': 9,
+    'टेन': 10, 'जीरो': 0, 'झीरो': 0, 'ज़ीरो': 0
+};
+
 /**
  * Parse spoken number from any language to digits
  * Handles: "six five" -> "65", "छह पांच" -> "65", "सहा पाच" -> "65"
@@ -147,16 +159,136 @@ export const parseSpokenAge = (text, language = 'en-US') => {
 
 /**
  * Parse phone number from spoken text
- * Handles digit-by-digit or grouped pronunciation
+ * Handles digit-by-digit or grouped pronunciation (2-3 digits at a time)
+ * Supports Hindi and Marathi number words
  * @param {string} text - Spoken phone number
  * @param {string} language - Language code
  * @returns {string} Phone number (digits only)
  */
 export const parseSpokenPhone = (text, language = 'en-US') => {
-    const parsed = parseSpokenNumber(text, language);
+    if (!text) return '';
+
+    // Combine all dictionaries for robust parsing (including transliterated English)
+    const allNumberWords = {
+        ...ENGLISH_NUMBERS,
+        ...TRANSLITERATED_ENGLISH,
+        ...HINDI_NUMBERS,
+        ...MARATHI_NUMBERS
+    };
+
+    let cleanText = text.trim().toLowerCase();
+
+    // First, extract any raw digits present
+    const rawDigits = cleanText.match(/\d+/g);
+    if (rawDigits) {
+        const combined = rawDigits.join('');
+        if (combined.length >= 10) {
+            return combined.replace(/\D/g, '');
+        }
+    }
+
+    // Split by common separators and process each word/chunk
+    const words = cleanText.split(/[\s,।॥\-]+/);
+    let result = '';
+
+    for (const word of words) {
+        if (!word) continue;
+
+        // Check if word is digits
+        if (/^\d+$/.test(word)) {
+            result += word;
+            continue;
+        }
+
+        // Check all number dictionaries
+        const foundNumber = allNumberWords[word];
+        if (foundNumber !== undefined) {
+            // For multi-digit numbers (10-99), append as string to preserve each digit
+            if (foundNumber >= 10 && foundNumber <= 99) {
+                result += String(foundNumber);
+            } else if (foundNumber >= 100) {
+                // Handle 100 specially - usually means "one hundred" context
+                result += String(foundNumber);
+            } else {
+                // Single digit (0-9)
+                result += String(foundNumber);
+            }
+        }
+    }
 
     // Remove any non-digit characters
-    const digits = parsed.replace(/\D/g, '');
+    return result.replace(/\D/g, '');
+};
 
-    return digits;
+/**
+ * Clean spoken phone number and format with country code
+ * @param {string} spokenText - Raw spoken text containing phone number
+ * @param {string} language - Language code for parsing
+ * @returns {{digits: string, formatted: string, isValid: boolean}}
+ */
+export const cleanAndFormatPhoneNumber = (spokenText, language = 'en-US') => {
+    const parsed = parseSpokenPhone(spokenText, language);
+
+    // Remove spaces, dashes, and other non-digits
+    const cleaned = parsed.replace(/[\s\-()]/g, '');
+
+    // If 10 digits, auto-prepend +91 (India)
+    if (cleaned.length === 10 && /^[6-9]/.test(cleaned)) {
+        return {
+            digits: cleaned,
+            formatted: `+91${cleaned}`,
+            isValid: true
+        };
+    }
+
+    // If starts with + and has valid length (12-13 for India)
+    if (cleaned.startsWith('+') && cleaned.length >= 12) {
+        return {
+            digits: cleaned.replace(/^\+/, ''),
+            formatted: cleaned,
+            isValid: true
+        };
+    }
+
+    // If starts with 91 and has 12 digits
+    if (cleaned.startsWith('91') && cleaned.length === 12) {
+        return {
+            digits: cleaned.substring(2),
+            formatted: `+${cleaned}`,
+            isValid: true
+        };
+    }
+
+    // Return partial result for display
+    return {
+        digits: cleaned,
+        formatted: cleaned.length === 10 ? `+91${cleaned}` : cleaned,
+        isValid: cleaned.length === 10
+    };
+};
+
+/**
+ * Format phone number for voice readback
+ * Reads each digit separately for clarity
+ * @param {string} phoneNumber - Phone number to read
+ * @param {string} language - Language code
+ * @returns {string} Formatted for TTS readback
+ */
+export const formatPhoneForVoice = (phoneNumber, language = 'en-US') => {
+    if (!phoneNumber) return '';
+
+    // Extract just digits
+    const digits = phoneNumber.replace(/\D/g, '');
+
+    // Remove country code for readback
+    const localNumber = digits.startsWith('91') ? digits.substring(2) : digits;
+
+    // Group in pairs for natural speech (common in India)
+    // e.g., "98 76 54 32 10"
+    const groups = [];
+    for (let i = 0; i < localNumber.length; i += 2) {
+        groups.push(localNumber.substring(i, i + 2));
+    }
+
+    return groups.join(' ');
 };

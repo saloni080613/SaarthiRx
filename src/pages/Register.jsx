@@ -92,7 +92,7 @@ const Register = () => {
     const [loadingMessage, setLoadingMessage] = useState('');
     const [isNewUser, setIsNewUser] = useState(true);
     const [firebaseUser, setFirebaseUser] = useState(null);
-    
+
     const hasSpokenRef = useRef(false);
     const recaptchaInitialized = useRef(false);
 
@@ -126,7 +126,7 @@ const Register = () => {
     // Auto-speak question on load and when question changes
     useEffect(() => {
         if (!question) return;
-        
+
         const timer = setTimeout(() => {
             speak(questionText);
         }, currentQuestion === 0 && !hasSpokenRef.current ? 800 : 300);
@@ -137,18 +137,14 @@ const Register = () => {
     // Capture voice input
     useEffect(() => {
         if (transcript) {
-            setTempAnswer(transcript);
-
-            // Auto-advance after 2 seconds of silence
-            const timer = setTimeout(() => {
-                if (transcript && transcript.trim()) {
-                    handleNext();
-                }
-            }, 2000);
-
-            return () => clearTimeout(timer);
+            // Remove spaces for phone/otp/age fields (elder-friendly)
+            let cleanedTranscript = transcript;
+            if (question?.id === 'phone' || question?.id === 'otp' || question?.id === 'age') {
+                cleanedTranscript = transcript.replace(/\s+/g, '');
+            }
+            setTempAnswer(cleanedTranscript);
         }
-    }, [transcript]);
+    }, [transcript, question?.id]);
 
     // Handle repeat question (speaker button)
     const handleRepeat = () => {
@@ -159,7 +155,7 @@ const Register = () => {
     const handleSendOtp = async (phoneNumber) => {
         setIsLoading(true);
         setLoadingMessage(t.sendingOtp);
-        
+
         try {
             await sendOtp(phoneNumber);
             triggerSuccess();
@@ -170,14 +166,14 @@ const Register = () => {
             const errorMsg = getAuthErrorMessage(error, language);
             speak(errorMsg);
             setValidationError(errorMsg);
-            
+
             // Re-initialize reCAPTCHA
             try {
                 setupRecaptcha('recaptcha-container');
             } catch (e) {
                 console.error('reCAPTCHA re-init error:', e);
             }
-            
+
             return false;
         } finally {
             setIsLoading(false);
@@ -189,33 +185,32 @@ const Register = () => {
     const handleVerifyOtp = async (otp) => {
         setIsLoading(true);
         setLoadingMessage(t.verifyingOtp);
-        
+
         try {
             const user = await verifyOtp(otp);
             setFirebaseUser(user);
             triggerSuccess();
-            
+
             // Check if user profile exists in Firestore
             const existingProfile = await getUserFromFirestore(user.uid);
-            
+
             if (existingProfile && isProfileComplete(existingProfile)) {
                 // Returning user - load profile and go to dashboard
                 setIsNewUser(false);
                 speak(t.welcomeBack);
-                
-                // Apply saved language preference
-                if (existingProfile.language) {
-                    setLanguage(existingProfile.language);
-                }
-                
+
+                // IMPORTANT: Keep user's CURRENT language selection, don't override
+                // Only use saved language if user hasn't already selected one this session
+                // (Language is already set from Welcome page)
+
                 // Save to context and localStorage
                 saveUser(existingProfile);
-                
+
                 // Navigate to dashboard after brief delay
                 setTimeout(() => {
                     navigate('/dashboard');
                 }, 1500);
-                
+
                 return false; // Don't continue to next question
             } else {
                 // New user - continue with profile questions
@@ -238,18 +233,18 @@ const Register = () => {
     const handleSaveProfile = async (userData) => {
         setIsLoading(true);
         setLoadingMessage(t.savingProfile);
-        
+
         try {
             const profileData = {
                 ...userData,
                 language // Store current language preference
             };
-            
+
             await saveUserToFirestore(firebaseUser.uid, profileData);
-            
+
             // Save to context and localStorage
             saveUser(profileData);
-            
+
             triggerSuccess();
             navigate('/dashboard');
         } catch (error) {
@@ -288,7 +283,7 @@ const Register = () => {
                 return;
             }
             processedAnswer = validation.formatted;
-            
+
             // Send OTP
             const success = await handleSendOtp(processedAnswer);
             if (!success) {
@@ -313,7 +308,7 @@ const Register = () => {
                 return;
             }
             processedAnswer = otpDigits;
-            
+
             // Verify OTP
             const shouldContinue = await handleVerifyOtp(processedAnswer);
             if (!shouldContinue) {
@@ -365,7 +360,12 @@ const Register = () => {
     };
 
     const handleInputChange = (e) => {
-        setTempAnswer(e.target.value);
+        let value = e.target.value;
+        // Remove spaces for phone/otp/age fields
+        if (question?.id === 'phone' || question?.id === 'otp' || question?.id === 'age') {
+            value = value.replace(/\s+/g, '');
+        }
+        setTempAnswer(value);
     };
 
     return (

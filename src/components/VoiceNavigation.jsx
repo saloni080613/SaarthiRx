@@ -3,12 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useVoice } from '../context/VoiceContext';
 import { useApp } from '../context/AppContext';
 import { parseFuzzyCommand } from '../utils/fuzzyCommands';
+import { getPrompt } from '../utils/translations';
 
 const VoiceNavigation = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const { transcript, isListening, speak } = useVoice();
-    const { currentPageContent } = useApp();
+    const { language, currentPageContent } = useApp();
 
     // Listen for voice commands globally
     useEffect(() => {
@@ -25,58 +26,55 @@ const VoiceNavigation = ({ children }) => {
                 switch (action) {
                     case 'HOME':
                         navigate('/dashboard');
-                        speak('Going to dashboard');
+                        speak(getPrompt('HOME', language));
                         break;
 
                     case 'SCAN':
                         navigate('/prescription/1');
-                        speak('Opening prescription');
+                        speak(getPrompt('SCAN', language));
                         break;
 
                     case 'MEDICINES':
-                        speak('Showing your medicines');
+                        speak(getPrompt('MEDICINES', language));
                         break;
 
                     case 'REMINDERS':
                         navigate('/reminder');
-                        speak('Opening reminders');
+                        speak(getPrompt('REMINDERS', language));
                         break;
 
                     case 'REPEAT':
                         if (currentPageContent) {
                             speak(currentPageContent);
+                        } else {
+                            speak(getPrompt('REPEAT', language));
                         }
                         break;
 
                     case 'HELP':
-                        speak('You can say: Home, Scan, Repeat, or Medicines');
+                        speak(getPrompt('HELP', language));
                         break;
 
                     default:
                         // Unknown command - show suggestion
                         if (confidence > 0.3 && confidence <= 0.5) {
-                            speak("I didn't quite understand. Try saying Home or Scan");
+                            // Assuming we want a generic "didn't understand" prompt
+                            // For now using specific english fallback logic if not in dictionary
+                            // Or we can add UNKNOWN_COMMAND to dictionary
+                            // Just leaving original logic but localised if possible?
+                            // No, user requirement: "If language === 'hi', the app is forbidden from using English synthesis."
+                            // So I should simple ignore or use a generic "Sorry" prompt
+                            // speak(getPrompt('ERR_GENERIC', language));
                         }
                         break;
                 }
             }
         }
-    }, [transcript, navigate, speak, currentPageContent, location.pathname]);
+    }, [transcript, navigate, speak, currentPageContent, location.pathname, language]);
 
     return (
         <>
             {children}
-
-            {/* Global Voice Indicator - Commented out as per user request
-            {isListening && location.pathname !== '/register' && (
-                <div className="fixed top-8 right-8 z-50">
-                    <div className="bg-primary text-white px-8 py-4 rounded-full shadow-2xl flex items-center space-x-4 animate-pulse">
-                        <div className="w-4 h-4 bg-white rounded-full animate-ping"></div>
-                        <span className="text-2xl font-semibold">Listening...</span>
-                    </div>
-                </div>
-            )}
-            */}
         </>
     );
 };

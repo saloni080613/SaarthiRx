@@ -90,7 +90,7 @@ const GlobalActionButton = ({ isActive = false }) => {
                     </motion.div>
                 </motion.div>
             )}
-            */} 
+            */}
 
             {/* Floating Action Button - Fixed Centered Position */}
             <motion.button
@@ -105,21 +105,17 @@ const GlobalActionButton = ({ isActive = false }) => {
                     border-4 border-white/30
                 `}
                 style={{
-                    left: '50%'
+                    left: '50%',
+                    transform: 'translateX(-50%)'
                 }}
-                whileHover={{ scale: 1.08, x: '-50%' }}
-                whileTap={{ scale: 0.92, x: '-50%' }}
+                whileTap={{ scale: 0.95 }}
                 animate={isListening || isActive ? {
-                    scale: [1, 1.06, 1],
-                    x: '-50%',
                     boxShadow: [
                         '0 10px 40px rgba(255, 140, 0, 0.4)',
                         '0 10px 60px rgba(255, 140, 0, 0.7)',
                         '0 10px 40px rgba(255, 140, 0, 0.4)',
                     ]
-                } : {
-                    x: '-50%'
-                }}
+                } : {}}
                 transition={isListening || isActive ? {
                     duration: 1.5,
                     repeat: Infinity,

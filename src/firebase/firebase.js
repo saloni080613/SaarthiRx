@@ -33,3 +33,11 @@ if (import.meta.env.VITE_RECAPTCHA_SITE_KEY) {
 // Export services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+
+// Enable testing mode for local development
+// This allows testing with the number +919999888877
+// Moved to authService.js to handle real numbers correctly
+// if (import.meta.env.DEV) {
+//   auth.settings.appVerificationDisabledForTesting = true;
+//   console.log('🔧 Firebase Auth testing mode enabled for development');
+// }

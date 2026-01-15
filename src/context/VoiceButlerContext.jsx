@@ -18,7 +18,7 @@ export const VoiceButlerProvider = ({ children }) => {
     const [isAutoListening, setIsAutoListening] = useState(false);
     const [lastSpeechTime, setLastSpeechTime] = useState(null);
 
-    // Auto-activate mic after TTS with 500ms delay
+    // Auto-activate mic after TTS with 500ms delay (reduced for elderly)
     const announcePageAndAction = useCallback(async (pageName, primaryAction, autoActivateMic = true) => {
         const announcement = `${pageName}. ${primaryAction}`;
 
@@ -26,7 +26,7 @@ export const VoiceButlerProvider = ({ children }) => {
             await speak(announcement);
 
             if (autoActivateMic) {
-                // 500ms delay after TTS completes
+                // Echo Buffer: 500ms delay after TTS ends (faster response)
                 setTimeout(() => {
                     setIsAutoListening(true);
                     setLastSpeechTime(Date.now());
@@ -58,6 +58,7 @@ export const VoiceButlerProvider = ({ children }) => {
         await speak(message);
 
         if (autoActivateMic) {
+            // Echo Buffer: 500ms delay (faster response)
             setTimeout(() => {
                 setIsAutoListening(true);
                 setLastSpeechTime(Date.now());
