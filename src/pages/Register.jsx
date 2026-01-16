@@ -134,6 +134,10 @@ const Register = () => {
         return () => clearTimeout(timer);
     }, [currentQuestion, questionText, speak, question]);
 
+    // Track previous listening state for auto-advance
+    const prevListeningRef = useRef(isListening);
+    const autoAdvanceRef = useRef(null);
+
     // Capture voice input
     useEffect(() => {
         if (transcript) {
@@ -145,6 +149,32 @@ const Register = () => {
             setTempAnswer(cleanedTranscript);
         }
     }, [transcript, question?.id]);
+
+    // Auto-advance when mic stops AND we have a valid transcript
+    useEffect(() => {
+        const wasListening = prevListeningRef.current;
+        prevListeningRef.current = isListening;
+
+        // Mic just stopped (was listening, now not listening)
+        if (wasListening && !isListening && tempAnswer && !isLoading) {
+            // Clear any existing auto-advance timer
+            if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
+
+            // Auto-advance after 300ms delay (gives user a moment to see their input)
+            autoAdvanceRef.current = setTimeout(() => {
+                console.log('🚀 Auto-advancing after voice input...');
+                handleNextRef.current?.();
+            }, 300);
+        }
+
+        return () => {
+            if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
+        };
+    }, [isListening, tempAnswer, isLoading]);
+
+    // Ref to handleNext for auto-advance (avoids stale closure)
+    const handleNextRef = useRef(null);
+
 
     // Handle repeat question (speaker button)
     const handleRepeat = () => {
@@ -353,6 +383,9 @@ const Register = () => {
             await handleSaveProfile(newAnswers);
         }
     };
+
+    // Keep ref updated for auto-advance
+    handleNextRef.current = handleNext;
 
     const handleOptionClick = (option) => {
         triggerAction();

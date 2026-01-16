@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 import { useApp } from './AppContext';
+import { triggerHaptic } from '../utils/haptics';
 
 const VoiceContext = createContext();
 
@@ -20,6 +21,7 @@ export const VoiceProvider = ({ children }) => {
 
     const recognitionRef = useRef(null);
     const synthRef = useRef(window.speechSynthesis);
+    const silenceTimerRef = useRef(null);
 
     // Initialize Speech Recognition
     useEffect(() => {
@@ -32,7 +34,7 @@ export const VoiceProvider = ({ children }) => {
             recognition.lang = language;
 
             recognition.onstart = () => {
-                console.log('Speech recognition started');
+                console.log('🎙️ Speech recognition started');
                 setIsListening(true);
                 setError(null);
             };
@@ -51,22 +53,38 @@ export const VoiceProvider = ({ children }) => {
                 }
 
                 if (finalTranscript) {
-                    console.log('Final transcript:', finalTranscript);
+                    console.log('✅ Final transcript:', finalTranscript);
                     setTranscript(finalTranscript.trim());
                 } else if (interimTranscript) {
-                    console.log('Interim:', interimTranscript);
+                    console.log('📝 Interim:', interimTranscript);
                 }
+
+                // Auto-stop detection: Reset timer on every result (speech detected)
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+
+                // 1.5 seconds of silence after speech → auto-stop mic (elder-friendly)
+                silenceTimerRef.current = setTimeout(() => {
+                    console.log('🤫 Silence detected, auto-stopping mic...');
+                    triggerHaptic([50, 50]); // Success chime haptic
+                    if (recognitionRef.current) {
+                        try {
+                            recognitionRef.current.stop();
+                        } catch (e) { }
+                    }
+                }, 1500);
             };
 
             recognition.onerror = (event) => {
                 console.error('Speech recognition error:', event.error);
                 setError(event.error);
                 setIsListening(false);
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             };
 
             recognition.onend = () => {
-                console.log('Speech recognition ended');
+                console.log('🛑 Speech recognition ended');
                 setIsListening(false);
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
             };
 
             recognitionRef.current = recognition;
@@ -80,22 +98,43 @@ export const VoiceProvider = ({ children }) => {
                     recognitionRef.current.stop();
                 } catch (e) { }
             }
+            if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
     }, [language]);
 
     // Start listening
     const startListening = useCallback(() => {
+        // MUTEX: Don't allow listening while speaking
+        if (isSpeaking) {
+            console.warn('🔇 Mic blocked: TTS is currently active');
+            return;
+        }
+
         if (recognitionRef.current && !isListening) {
             setTranscript('');
             setError(null);
             try {
                 recognitionRef.current.start();
-                console.log('Started listening...');
+                console.log('🎙️ Started listening...');
+
+                // Start a 5-second "no speech" timeout
+                // If user doesn't say anything, auto-stop after 5 seconds
+                if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+                silenceTimerRef.current = setTimeout(() => {
+                    console.log('⏱️ No speech detected for 5s, auto-stopping...');
+                    triggerHaptic([30, 30]); // Soft haptic for timeout
+                    if (recognitionRef.current) {
+                        try {
+                            recognitionRef.current.stop();
+                        } catch (e) { }
+                    }
+                }, 5000);
+
             } catch (err) {
                 console.error('Error starting recognition:', err);
             }
         }
-    }, [isListening]);
+    }, [isListening, isSpeaking]);
 
     // Stop listening
     const stopListening = useCallback(() => {

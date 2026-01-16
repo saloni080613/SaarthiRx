@@ -29,12 +29,13 @@ const DANGEROUS_COMBOS = [
  * @returns {Promise<object>} Extracted medicine data
  */
 export const analyzePrescription = async (base64Image, mimeType = 'image/jpeg') => {
-    // Models to try in order of preference
+    // Models to try in order of preference (updated Jan 2025)
+    // Note: gemini-1.x and gemini-pro-vision are deprecated, use 2.x models
     const MODELS_TO_TRY = [
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
-        'gemini-1.5-pro',
-        'gemini-pro-vision'
+        'gemini-2.5-flash',         // Fast multimodal model (recommended)
+        'gemini-2.0-flash-exp',     // Experimental 2.0 version
+        'gemini-2.5-pro',           // Powerful reasoning model
+        'gemini-1.5-flash',         // Fallback (may still work)
     ];
 
     const prompt = `You are a medical prescription reader for elderly Indian users.
