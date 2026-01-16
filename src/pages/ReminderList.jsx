@@ -1,0 +1,347 @@
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useApp } from '../context/AppContext';
+import { useVoiceButler } from '../context/VoiceButlerContext';
+import {
+    getReminders,
+    addReminder,
+    updateReminder,
+    deleteReminder,
+    toggleReminder,
+    formatTime,
+    getTimePeriod
+} from '../services/reminderService';
+import ReminderForm from '../components/ReminderForm';
+import GlobalActionButton from '../components/GlobalActionButton';
+import { triggerAction, triggerSuccess } from '../utils/haptics';
+
+/**
+ * ReminderList - Main reminder management page
+ */
+const ReminderList = () => {
+    const navigate = useNavigate();
+    const { language } = useApp();
+    const { announce } = useVoiceButler();
+
+    const [reminders, setReminders] = useState([]);
+    const [isFormOpen, setIsFormOpen] = useState(false);
+    const [editingReminder, setEditingReminder] = useState(null);
+    const [deleteConfirm, setDeleteConfirm] = useState(null);
+
+    const hasAnnounced = useRef(false);
+
+    // Labels
+    const labels = {
+        'en-US': {
+            title: 'My Reminders',
+            subtitle: 'Manage your medication schedule',
+            addNew: 'Add Reminder',
+            empty: 'No reminders yet',
+            emptyHint: 'Tap the button below to add your first reminder',
+            everyday: 'Every day',
+            deleteTitle: 'Delete Reminder?',
+            deleteConfirm: 'Delete',
+            cancel: 'Cancel',
+            enabled: 'On',
+            disabled: 'Off'
+        },
+        'hi-IN': {
+            title: 'मेरे रिमाइंडर',
+            subtitle: 'अपना दवा शेड्यूल प्रबंधित करें',
+            addNew: 'रिमाइंडर जोड़ें',
+            empty: 'अभी कोई रिमाइंडर नहीं',
+            emptyHint: 'अपना पहला रिमाइंडर जोड़ने के लिए नीचे बटन दबाएं',
+            everyday: 'हर दिन',
+            deleteTitle: 'रिमाइंडर हटाएं?',
+            deleteConfirm: 'हटाएं',
+            cancel: 'रद्द करें',
+            enabled: 'चालू',
+            disabled: 'बंद'
+        },
+        'mr-IN': {
+            title: 'माझे रिमाइंडर',
+            subtitle: 'तुमचे औषध वेळापत्रक व्यवस्थापित करा',
+            addNew: 'रिमाइंडर जोडा',
+            empty: 'अद्याप कोणतेही रिमाइंडर नाहीत',
+            emptyHint: 'तुमचा पहिला रिमाइंडर जोडण्यासाठी खालील बटण दाबा',
+            everyday: 'दररोज',
+            deleteTitle: 'रिमाइंडर हटवायचा?',
+            deleteConfirm: 'हटवा',
+            cancel: 'रद्द करा',
+            enabled: 'चालू',
+            disabled: 'बंद'
+        }
+    };
+
+    const t = labels[language] || labels['en-US'];
+
+    // Load reminders
+    useEffect(() => {
+        loadReminders();
+    }, []);
+
+    // Announce page
+    useEffect(() => {
+        if (!hasAnnounced.current) {
+            hasAnnounced.current = true;
+            announce(t.title);
+        }
+    }, []);
+
+    const loadReminders = () => {
+        const data = getReminders();
+        // Sort by time
+        data.sort((a, b) => a.time.localeCompare(b.time));
+        setReminders(data);
+    };
+
+    // Handle add
+    const handleAdd = () => {
+        triggerAction();
+        setEditingReminder(null);
+        setIsFormOpen(true);
+    };
+
+    // Handle edit
+    const handleEdit = (reminder) => {
+        triggerAction();
+        setEditingReminder(reminder);
+        setIsFormOpen(true);
+    };
+
+    // Handle save (add or update)
+    const handleSave = (formData) => {
+        if (editingReminder) {
+            updateReminder(editingReminder.id, formData);
+        } else {
+            addReminder(formData);
+        }
+        triggerSuccess();
+        loadReminders();
+    };
+
+    // Handle toggle
+    const handleToggle = (id) => {
+        triggerAction();
+        toggleReminder(id);
+        loadReminders();
+    };
+
+    // Handle delete
+    const handleDelete = (id) => {
+        deleteReminder(id);
+        triggerSuccess();
+        setDeleteConfirm(null);
+        loadReminders();
+    };
+
+    // Format days display
+    const formatDays = (days) => {
+        if (days.length === 7) return t.everyday;
+        return days.join(', ');
+    };
+
+    return (
+        <motion.div
+            className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white pb-32"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+        >
+            {/* Header */}
+            <div className="bg-gradient-to-br from-primary to-primary-dark text-white p-6 pt-8 pb-10 rounded-b-3xl shadow-premium-lg">
+                <motion.button
+                    onClick={() => navigate('/dashboard')}
+                    className="flex items-center gap-2 text-white/80 hover:text-white mb-4"
+                    whileTap={{ scale: 0.95 }}
+                >
+                    <span className="text-2xl">←</span>
+                    <span className="text-lg">Back</span>
+                </motion.button>
+                <h1 className="text-4xl font-display font-bold mb-2">{t.title}</h1>
+                <p className="text-lg text-white/80">{t.subtitle}</p>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 p-6 -mt-4">
+                {reminders.length === 0 ? (
+                    /* Empty State */
+                    <motion.div
+                        className="flex flex-col items-center justify-center py-16 text-center"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                    >
+                        <div className="text-8xl mb-6">💊</div>
+                        <h2 className="text-2xl font-bold text-gray-700 mb-2">{t.empty}</h2>
+                        <p className="text-gray-500 max-w-xs">{t.emptyHint}</p>
+                    </motion.div>
+                ) : (
+                    /* Reminder Cards */
+                    <div className="space-y-4">
+                        {reminders.map((reminder, index) => (
+                            <motion.div
+                                key={reminder.id}
+                                className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 relative overflow-hidden"
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.1, duration: 0.3 }}
+                                whileTap={{ scale: 0.98 }}
+                                onClick={() => handleEdit(reminder)}
+                            >
+                                {/* Color Bar */}
+                                <div
+                                    className="absolute left-0 top-0 bottom-0 w-2"
+                                    style={{ backgroundColor: reminder.color }}
+                                />
+
+                                <div className="flex items-start gap-4 pl-3">
+                                    {/* Pill Icon */}
+                                    <div
+                                        className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 shadow-inner"
+                                        style={{ backgroundColor: reminder.color + '20' }}
+                                    >
+                                        <div
+                                            className="w-8 h-8 rounded-full"
+                                            style={{ backgroundColor: reminder.color }}
+                                        />
+                                    </div>
+
+                                    {/* Info */}
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-xl font-bold text-gray-800 truncate">
+                                            {reminder.medicineName}
+                                        </h3>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <span className="text-lg text-primary font-semibold">
+                                                {formatTime(reminder.time)}
+                                            </span>
+                                            <span className="text-gray-400">•</span>
+                                            <span className="text-gray-500">
+                                                {getTimePeriod(reminder.time)}
+                                            </span>
+                                        </div>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            {formatDays(reminder.repeatDays)}
+                                        </p>
+                                    </div>
+
+                                    {/* Toggle & Actions */}
+                                    <div className="flex flex-col items-end gap-2">
+                                        {/* Toggle Switch */}
+                                        <motion.button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleToggle(reminder.id);
+                                            }}
+                                            className={`
+                                                w-16 h-9 rounded-full p-1 transition-colors
+                                                ${reminder.enabled
+                                                    ? 'bg-green-500'
+                                                    : 'bg-gray-300'
+                                                }
+                                            `}
+                                            whileTap={{ scale: 0.95 }}
+                                        >
+                                            <motion.div
+                                                className="w-7 h-7 bg-white rounded-full shadow-md"
+                                                animate={{ x: reminder.enabled ? 28 : 0 }}
+                                                transition={{ type: 'spring', stiffness: 500, damping: 30 }}
+                                            />
+                                        </motion.button>
+
+                                        {/* Delete Button */}
+                                        <motion.button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setDeleteConfirm(reminder);
+                                            }}
+                                            className="text-red-400 hover:text-red-600 p-2"
+                                            whileTap={{ scale: 0.9 }}
+                                        >
+                                            🗑️
+                                        </motion.button>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Add Button */}
+            <motion.button
+                onClick={handleAdd}
+                className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-primary text-white px-8 py-4 rounded-full font-bold text-xl shadow-premium-lg flex items-center gap-3 z-40"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                initial={{ y: 100, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.3 }}
+            >
+                <span className="text-2xl">+</span>
+                {t.addNew}
+            </motion.button>
+
+            {/* Reminder Form Modal */}
+            <ReminderForm
+                isOpen={isFormOpen}
+                onClose={() => {
+                    setIsFormOpen(false);
+                    setEditingReminder(null);
+                }}
+                onSave={handleSave}
+                reminder={editingReminder}
+            />
+
+            {/* Delete Confirmation */}
+            <AnimatePresence>
+                {deleteConfirm && (
+                    <motion.div
+                        className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-6"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setDeleteConfirm(null)}
+                    >
+                        <motion.div
+                            className="bg-white rounded-3xl p-6 max-w-sm w-full"
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            <h3 className="text-2xl font-bold text-gray-800 mb-4">
+                                {t.deleteTitle}
+                            </h3>
+                            <p className="text-gray-600 mb-6">
+                                {deleteConfirm.medicineName}
+                            </p>
+                            <div className="flex gap-3">
+                                <motion.button
+                                    onClick={() => setDeleteConfirm(null)}
+                                    className="flex-1 py-3 px-4 bg-gray-100 text-gray-700 rounded-xl font-semibold"
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    {t.cancel}
+                                </motion.button>
+                                <motion.button
+                                    onClick={() => handleDelete(deleteConfirm.id)}
+                                    className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl font-semibold"
+                                    whileTap={{ scale: 0.95 }}
+                                >
+                                    {t.deleteConfirm}
+                                </motion.button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Global Action Button */}
+            <GlobalActionButton />
+        </motion.div>
+    );
+};
+
+export default ReminderList;

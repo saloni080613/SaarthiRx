@@ -51,7 +51,7 @@ const Dashboard = () => {
         } else if (action === 'medicines') {
             // TODO: Navigate to medicines
         } else if (action === 'reminders') {
-            navigate('/reminder');
+            navigate('/reminders');
         }
     };
 

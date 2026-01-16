@@ -140,6 +140,38 @@ export const VOICE_PROMPTS = {
         'en-US': 'Namaste. Press the big orange button to scan.',
         'hi-IN': 'नमस्ते। स्कैन करने के लिए बड़े नारंगी बटन को दबाएं।',
         'mr-IN': 'नमस्कार. स्कॅन करण्यासाठी मोठ्या नारंगी बटणावर दाबा.'
+    },
+
+    // Reminder Page
+    REMINDER_TITLE: {
+        'en-US': 'My Reminders',
+        'hi-IN': 'मेरे रिमाइंडर',
+        'mr-IN': 'माझे रिमाइंडर'
+    },
+    REMINDER_ADD: {
+        'en-US': 'Add Reminder',
+        'hi-IN': 'रिमाइंडर जोड़ें',
+        'mr-IN': 'रिमाइंडर जोडा'
+    },
+    REMINDER_EMPTY: {
+        'en-US': 'No reminders yet. Tap the button to add your first reminder.',
+        'hi-IN': 'अभी कोई रिमाइंडर नहीं। अपना पहला रिमाइंडर जोड़ने के लिए बटन दबाएं।',
+        'mr-IN': 'अद्याप कोणतेही रिमाइंडर नाहीत. तुमचा पहिला रिमाइंडर जोडण्यासाठी बटण दाबा.'
+    },
+    REMINDER_TAKEN: {
+        'en-US': 'I have taken it',
+        'hi-IN': 'मैंने ले लिया',
+        'mr-IN': 'मी घेतली'
+    },
+    REMINDER_SNOOZE: {
+        'en-US': 'Snooze',
+        'hi-IN': 'स्नूज़',
+        'mr-IN': 'स्नूझ'
+    },
+    REMINDER_SKIP: {
+        'en-US': 'Skip',
+        'hi-IN': 'छोड़ें',
+        'mr-IN': 'वगळा'
     }
 };
 

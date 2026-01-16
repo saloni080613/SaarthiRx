@@ -39,7 +39,7 @@ const VoiceNavigation = ({ children }) => {
                         break;
 
                     case 'REMINDERS':
-                        navigate('/reminder');
+                        navigate('/reminders');
                         speak(getPrompt('REMINDERS', language));
                         break;
 
