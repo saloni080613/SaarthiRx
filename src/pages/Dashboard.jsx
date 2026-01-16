@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
-import { useVoiceButler } from '../context/VoiceButlerContext';
+import { useVoice } from '../context/VoiceContext';
 import { triggerAction } from '../utils/haptics';
 import { cardHover, staggerContainer, staggerItem } from '../utils/animations';
 import { getPrompt } from '../utils/translations';
@@ -11,9 +11,9 @@ import GlobalActionButton from '../components/GlobalActionButton';
 const Dashboard = () => {
     const navigate = useNavigate();
     const { language, setCurrentPageContent, user } = useApp();
-    const { announcePageAndAction } = useVoiceButler();
+    const { speak, startListening, transcript, resetTranscript, isListening } = useVoice();
 
-    // One-shot flag to prevent audio loop (Phase 3 fix)
+    // One-shot flag to prevent audio loop
     const hasAnnounced = useRef(false);
 
     // Use user from context (synced with Firestore)
@@ -27,29 +27,55 @@ const Dashboard = () => {
 
     const greeting = greetings[language] || greetings['en-US'];
 
+    // Ultra-short greeting on mount - gives immediate control to user
     useEffect(() => {
-        // Only announce ONCE per mount (fixes "Parrot Loop")
         if (!hasAnnounced.current) {
             hasAnnounced.current = true;
 
-            const pageContent = getPrompt('DASHBOARD_ANNOUNCE', language);
-            setCurrentPageContent(pageContent);
+            setCurrentPageContent(getPrompt('DASHBOARD_ANNOUNCE', language));
 
-            // Simplified, elder-friendly prompt
-            announcePageAndAction(
-                greeting,
-                getPrompt('DASHBOARD_ANNOUNCE', language),
-                true
-            );
+            // Just say "Namaste" - ultra short (< 1 second)
+            const shortGreeting = {
+                'en-US': 'Namaste.',
+                'hi-IN': 'नमस्ते।',
+                'mr-IN': 'नमस्कार.'
+            };
+            speak(shortGreeting[language] || shortGreeting['en-US']);
+
+            // Auto-start mic after 1 second so user can immediately speak
+            setTimeout(() => {
+                if (!isListening) {
+                    try {
+                        startListening();
+                        console.log('🎙️ Auto-started mic for voice control');
+                    } catch (e) {
+                        console.log('Mic auto-start skipped');
+                    }
+                }
+            }, 1000);
         }
-    }, [greeting, language, setCurrentPageContent, announcePageAndAction]);
+    }, [language, setCurrentPageContent, speak, startListening, isListening]);
+
+    // Voice command: "Add Reminder" → navigate to /reminder
+    useEffect(() => {
+        if (!transcript) return;
+        
+        const cmd = transcript.toLowerCase();
+        const addReminderPatterns = ['add reminder', 'new reminder', 'रिमाइंडर जोड़ें', 'नवीन रिमाइंडर', 'रिमाइंडर'];
+        
+        if (addReminderPatterns.some(p => cmd.includes(p))) {
+            resetTranscript();
+            triggerAction();
+            navigate('/reminder');
+        }
+    }, [transcript, navigate, resetTranscript]);
 
     const handleAction = (action) => {
         triggerAction();
         if (action === 'scan') {
             navigate('/scan');
         } else if (action === 'medicines') {
-            // TODO: Navigate to medicines
+            navigate('/medicines');
         } else if (action === 'reminders') {
             navigate('/reminders');
         }

@@ -1,76 +1,168 @@
-import { useEffect } from 'react';
+/**
+ * VoiceNavigation - Global Voice Command Handler
+ * Mounted at Root Level to listen on every page
+ * Simple One-Word Keywords for Elder-Friendly navigation
+ * + AI Medicine Addition via natural language
+ */
+
+import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useVoice } from '../context/VoiceContext';
 import { useApp } from '../context/AppContext';
 import { parseFuzzyCommand } from '../utils/fuzzyCommands';
-import { getPrompt } from '../utils/translations';
+import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
+import { isMedicineAdditionCommand, addMedicineByVoice } from '../services/aiMedicineManager';
 
 const VoiceNavigation = ({ children }) => {
     const navigate = useNavigate();
     const location = useLocation();
-    const { transcript, isListening, speak } = useVoice();
+    const { transcript, isListening, speak, resetTranscript } = useVoice();
     const { language, currentPageContent } = useApp();
+    const processingRef = useRef(false);
+
+    // Friendly navigation messages (not robotic)
+    const getNavigationMessage = useCallback((destination) => {
+        const messages = {
+            'home': {
+                'en-US': 'Taking you home',
+                'hi-IN': 'घर ले जा रहा हूँ',
+                'mr-IN': 'घरी नेतो आहे'
+            },
+            'scan': {
+                'en-US': 'Opening camera',
+                'hi-IN': 'कैमरा खोल रहा हूँ',
+                'mr-IN': 'कॅमेरा उघडतो आहे'
+            },
+            'medicines': {
+                'en-US': 'Showing your medicines',
+                'hi-IN': 'आपकी दवाइयां दिखा रहा हूँ',
+                'mr-IN': 'तुमची औषधे दाखवतो आहे'
+            },
+            'reminders': {
+                'en-US': 'Opening reminders',
+                'hi-IN': 'रिमाइंडर खोल रहा हूँ',
+                'mr-IN': 'रिमाइंडर उघडतो आहे'
+            },
+            'back': {
+                'en-US': 'Going back',
+                'hi-IN': 'वापस जा रहा हूँ',
+                'mr-IN': 'मागे जातो आहे'
+            }
+        };
+        return messages[destination]?.[language] || messages[destination]?.['en-US'] || 'OK';
+    }, [language]);
+
+    // Handle AI medicine addition
+    const handleAIMedicineAddition = useCallback(async (input) => {
+        if (processingRef.current) return;
+        processingRef.current = true;
+
+        try {
+            const processingMsg = {
+                'en-US': 'Adding medicine...',
+                'hi-IN': 'दवाई जोड़ रहा हूँ...',
+                'mr-IN': 'औषध जोडत आहे...'
+            };
+            speak(processingMsg[language] || processingMsg['en-US']);
+
+            const result = await addMedicineByVoice(input, language);
+            
+            if (result.success) {
+                triggerSuccess();
+            } else {
+                triggerAlert();
+            }
+            
+            speak(result.voiceFeedback);
+        } catch (error) {
+            console.error('AI medicine addition error:', error);
+            triggerAlert();
+        } finally {
+            processingRef.current = false;
+        }
+    }, [language, speak]);
 
     // Listen for voice commands globally
     useEffect(() => {
-        if (transcript && transcript.trim()) {
-            // Don't interfere with Register page voice input
-            if (location.pathname === '/register') {
-                return;
-            }
+        if (!transcript || !transcript.trim()) return;
 
-            const { action, confidence } = parseFuzzyCommand(transcript);
+        // Don't interfere with Register page voice input
+        if (location.pathname === '/register') {
+            return;
+        }
 
-            // Only act on high confidence matches
-            if (confidence > 0.5) {
-                switch (action) {
-                    case 'HOME':
-                        navigate('/dashboard');
-                        speak(getPrompt('HOME', language));
-                        break;
+        // Check for AI medicine addition command first
+        if (isMedicineAdditionCommand(transcript)) {
+            triggerAction();
+            resetTranscript?.();
+            handleAIMedicineAddition(transcript);
+            return;
+        }
 
-                    case 'SCAN':
-                        navigate('/prescription/1');
-                        speak(getPrompt('SCAN', language));
-                        break;
+        const { action, confidence } = parseFuzzyCommand(transcript);
 
-                    case 'MEDICINES':
-                        speak(getPrompt('MEDICINES', language));
-                        break;
+        // Only act on confident matches
+        if (confidence > 0.5) {
+            // Haptic feedback on command recognition
+            triggerAction();
+            
+            // Clear transcript after processing
+            resetTranscript?.();
 
-                    case 'REMINDERS':
-                        navigate('/reminders');
-                        speak(getPrompt('REMINDERS', language));
-                        break;
+            switch (action) {
+                case 'HOME':
+                    speak(getNavigationMessage('home'));
+                    setTimeout(() => navigate('/dashboard'), 300);
+                    break;
 
-                    case 'REPEAT':
-                        if (currentPageContent) {
-                            speak(currentPageContent);
-                        } else {
-                            speak(getPrompt('REPEAT', language));
-                        }
-                        break;
+                case 'SCAN':
+                    speak(getNavigationMessage('scan'));
+                    setTimeout(() => navigate('/scan'), 300);
+                    break;
 
-                    case 'HELP':
-                        speak(getPrompt('HELP', language));
-                        break;
+                case 'MEDICINES':
+                    speak(getNavigationMessage('medicines'));
+                    setTimeout(() => navigate('/medicines'), 300);
+                    break;
 
-                    default:
-                        // Unknown command - show suggestion
-                        if (confidence > 0.3 && confidence <= 0.5) {
-                            // Assuming we want a generic "didn't understand" prompt
-                            // For now using specific english fallback logic if not in dictionary
-                            // Or we can add UNKNOWN_COMMAND to dictionary
-                            // Just leaving original logic but localised if possible?
-                            // No, user requirement: "If language === 'hi', the app is forbidden from using English synthesis."
-                            // So I should simple ignore or use a generic "Sorry" prompt
-                            // speak(getPrompt('ERR_GENERIC', language));
-                        }
-                        break;
-                }
+                case 'REMINDERS':
+                    speak(getNavigationMessage('reminders'));
+                    setTimeout(() => navigate('/reminders'), 300);
+                    break;
+
+                case 'BACK':
+                    speak(getNavigationMessage('back'));
+                    setTimeout(() => navigate(-1), 300);
+                    break;
+
+                case 'REPEAT':
+                    if (currentPageContent) {
+                        speak(currentPageContent);
+                    } else {
+                        const repeatMsg = {
+                            'en-US': 'Nothing to repeat',
+                            'hi-IN': 'दोहराने के लिए कुछ नहीं',
+                            'mr-IN': 'पुन्हा सांगायला काही नाही'
+                        };
+                        speak(repeatMsg[language] || repeatMsg['en-US']);
+                    }
+                    break;
+
+                case 'HELP':
+                    const helpMsg = {
+                        'en-US': 'You can say: Home, Scan, Medicines, Reminders, Back, or add a medicine by name',
+                        'hi-IN': 'आप बोल सकते हैं: होम, स्कैन, दवाई, रिमाइंडर, वापस, या दवाई का नाम बोलकर जोड़ सकते हैं',
+                        'mr-IN': 'तुम्ही बोलू शकता: होम, स्कॅन, औषध, रिमाइंडर, मागे, किंवा औषधाचे नाव सांगून जोडू शकता'
+                    };
+                    speak(helpMsg[language] || helpMsg['en-US']);
+                    break;
+
+                default:
+                    // Unknown command - ignore silently for elder-friendliness
+                    break;
             }
         }
-    }, [transcript, navigate, speak, currentPageContent, location.pathname, language]);
+    }, [transcript, navigate, speak, currentPageContent, location.pathname, language, getNavigationMessage, resetTranscript, handleAIMedicineAddition]);
 
     return (
         <>
@@ -80,3 +172,4 @@ const VoiceNavigation = ({ children }) => {
 };
 
 export default VoiceNavigation;
+
