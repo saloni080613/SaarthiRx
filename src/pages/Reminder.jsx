@@ -1,601 +1,464 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+/**
+ * Reminder Page - Cognitive Notification Overlay
+ * Full-screen alarm for elderly users with visual medicine identification
+ * Phase 4: Smart Patient Module
+ * + Serverless Browser Notifications
+ */
+
+import { useEffect, useState, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { useVoiceButler } from '../context/VoiceButlerContext';
 import { useVoice } from '../context/VoiceContext';
-import { triggerAlert, triggerSuccess } from '../utils/haptics';
+import { triggerAlert, triggerSuccess, triggerAction } from '../utils/haptics';
+import { logMedicationAction } from '../services/medicationService';
+import { requestNotificationPermission, triggerMissedDoseNotification } from '../utils/notifications';
 
-// ============================================
-// SERVERLESS NOTIFICATION UTILITIES
-// ============================================
-
-/**
- * Request browser notification permission (must be called from user gesture)
- * @returns {Promise<string>} Permission status
- */
-const requestNotificationPermission = async () => {
-    if (!('Notification' in window)) {
-        console.warn('Browser does not support notifications');
-        return 'unsupported';
-    }
-
-    if (Notification.permission === 'granted') {
-        return 'granted';
-    }
-
-    if (Notification.permission === 'denied') {
-        return 'denied';
-    }
-
-    try {
-        const permission = await Notification.requestPermission();
-        console.log('Notification permission result:', permission);
-        return permission;
-    } catch (error) {
-        console.error('Notification permission request failed:', error);
-        return 'error';
-    }
+// Color mapping for visual pills
+const COLOR_MAP = {
+    'white': '#F9FAFB',
+    'pink': '#F472B6',
+    'blue': '#3B82F6',
+    'red': '#EF4444',
+    'yellow': '#FBBF24',
+    'green': '#10B981',
+    'orange': '#F97316',
+    'brown': '#92400E',
+    'purple': '#8B5CF6',
+    'gray': '#6B7280'
 };
-
-/**
- * Trigger a browser notification with optional vibration (haptic feedback)
- * @param {string} title - Notification title
- * @param {string} body - Notification body text
- * @returns {Notification|null} The notification object or null
- */
-const triggerBrowserNotification = (title, body) => {
-    console.log('Attempting to trigger notification:', { title, body });
-
-    // Haptic feedback - vibrate pattern for urgency
-    if ('vibrate' in navigator) {
-        navigator.vibrate([200, 100, 200, 100, 300]);
-        console.log('Vibration triggered');
-    }
-
-    if (!('Notification' in window)) {
-        console.error('Notifications not supported in this browser');
-        alert(`📢 ${title}\n\n${body}`); // Fallback to alert
-        return null;
-    }
-
-    if (Notification.permission !== 'granted') {
-        console.error('Notification permission not granted. Current status:', Notification.permission);
-        alert(`📢 ${title}\n\n${body}`); // Fallback to alert
-        return null;
-    }
-
-    try {
-        const notification = new Notification(title, {
-            body,
-            icon: '/vite.svg', // Use a valid icon path
-            badge: '/vite.svg',
-            requireInteraction: true,
-            tag: 'medication-reminder-' + Date.now(),
-            silent: false
-        });
-
-        notification.onclick = () => {
-            window.focus();
-            notification.close();
-        };
-
-        console.log('Notification created successfully');
-
-        // Auto-close after 30 seconds
-        setTimeout(() => notification.close(), 30000);
-
-        return notification;
-    } catch (error) {
-        console.error('Failed to create notification:', error);
-        alert(`📢 ${title}\n\n${body}`); // Fallback to alert
-        return null;
-    }
-};
-
-/**
- * Open WhatsApp with pre-filled message for caretaker notification
- * @param {string} medicineName - Name of the medicine taken
- * @param {string} phoneNumber - Caretaker's phone number (optional)
- */
-const notifyCaretaker = (medicineName, phoneNumber = '') => {
-    const userName = JSON.parse(localStorage.getItem('userData') || '{}').name || 'I';
-    const message = encodeURIComponent(
-        `Hi! 👋\n\n✅ ${userName} just took their medication: *${medicineName}*\n\n🕐 Time: ${new Date().toLocaleTimeString()}\n📅 Date: ${new Date().toLocaleDateString()}\n\nAll good! 💚`
-    );
-
-    const whatsappUrl = phoneNumber
-        ? `https://wa.me/${phoneNumber}?text=${message}`
-        : `https://wa.me/?text=${message}`;
-
-    window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-};
-
-// ============================================
-// REMINDER COMPONENT
-// ============================================
 
 const Reminder = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const { language } = useApp();
     const { announce } = useVoiceButler();
-    const { transcript } = useVoice();
-    const [dismissed, setDismissed] = useState(false);
-    const [snoozed, setSnoozed] = useState(false);
-    const [notificationStatus, setNotificationStatus] = useState('default'); // 'default', 'granted', 'denied', 'unsupported'
-    const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
-    const missedNotificationSent = useRef(false);
-    const reminderTimeoutRef = useRef(null);
+    const { transcript, resetTranscript, isListening } = useVoice();
+    
+    const [status, setStatus] = useState('active'); // 'active' | 'taken' | 'snoozed' | 'missed'
+    const vibrationRef = useRef(null);
+    const voiceRef = useRef(null);
 
+    // Get user data
     const userData = JSON.parse(localStorage.getItem('userData') || '{}');
     const userName = userData.name || 'Friend';
-    const caretakerPhone = userData.caretakerPhone || '';
 
-    const medicine = {
-        name: 'Amlodipine 5mg',
-        description: 'blue round tablet',
-        color: '#3B82F6'
-    };
+    // Get medicine from URL params or localStorage
+    const medicineId = searchParams.get('id');
+    const timing = searchParams.get('timing') || 'morning';
+    
+    // Load medicine from localStorage (or could be from Firestore)
+    const savedMedicines = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+    const medicine = medicineId 
+        ? savedMedicines.find(m => m.id === medicineId) 
+        : savedMedicines[0] || {
+            name: 'Your Medicine',
+            visualDescription: 'blue round tablet',
+            visualColor: 'blue',
+            dosage: '5mg'
+        };
 
-    const messages = {
-        'en-US': `${userName}, it is time for your ${medicine.description}. Please take it now.`,
-        'hi-IN': `${userName}, आपकी ${medicine.description} लेने का समय हो गया है। कृपया अभी लें।`,
-        'mr-IN': `${userName}, तुमची ${medicine.description} घेण्याची वेळ झाली आहे. कृपया आता घ्या.`
-    };
+    // Get color for visual pill
+    const pillColor = COLOR_MAP[medicine.visualColor?.toLowerCase()] || COLOR_MAP.blue;
 
-    const buttonLabels = {
-        'en-US': {
-            taken: '✓ I have taken it',
-            snooze: '⏰ Snooze (5 min)',
-            skip: '✗ Skip this dose',
-            voiceHint: 'Or say "Taken" 🎙️'
+    // Construct the visual description for voice
+    const visualDesc = medicine.visualDescription || `${medicine.visualColor || 'blue'} tablet`;
+
+    // Translations
+    const t = {
+        title: {
+            'en-US': 'Medicine Time!',
+            'hi-IN': 'दवा का समय!',
+            'mr-IN': 'औषधाची वेळ!'
         },
-        'hi-IN': {
-            taken: '✓ मैंने ले ली',
-            snooze: '⏰ स्नूज़ (5 मिनट)',
-            skip: '✗ यह खुराक छोड़ें',
-            voiceHint: 'या "ले लिया" बोलें 🎙️'
+        message: {
+            'en-US': `${userName}, it is time for your ${visualDesc}. Please take it now.`,
+            'hi-IN': `${userName}, आपकी ${visualDesc} लेने का समय हो गया है। कृपया अभी लें।`,
+            'mr-IN': `${userName}, तुमची ${visualDesc} घेण्याची वेळ झाली आहे. कृपया आता घ्या.`
         },
-        'mr-IN': {
-            taken: '✓ मी घेतली',
-            snooze: '⏰ स्नूझ (5 मिनिटे)',
-            skip: '✗ हा डोस वगळा',
-            voiceHint: 'किंवा "घेतली" म्हणा 🎙️'
+        taken: {
+            'en-US': '✓ I Have Taken It',
+            'hi-IN': '✓ मैंने ले लिया',
+            'mr-IN': '✓ मी घेतले'
+        },
+        later: {
+            'en-US': '⏱️ Remind Later',
+            'hi-IN': '⏱️ बाद में याद दिलाएं',
+            'mr-IN': '⏱️ नंतर आठवण करा'
+        },
+        notTaking: {
+            'en-US': '❌ Not Taking',
+            'hi-IN': '❌ नहीं लूंगा',
+            'mr-IN': '❌ घेणार नाही'
+        },
+        voiceHint: {
+            'en-US': 'Say "Taken" or "Later" 🎙️',
+            'hi-IN': '"ले लिया" या "बाद में" बोलें 🎙️',
+            'mr-IN': '"घेतले" किंवा "नंतर" म्हणा 🎙️'
+        },
+        snoozed: {
+            'en-US': 'I will remind you in 15 minutes',
+            'hi-IN': 'मैं आपको 15 मिनट में याद दिलाऊंगा',
+            'mr-IN': 'मी तुम्हाला 15 मिनिटांत आठवण करून देईन'
+        },
+        missed: {
+            'en-US': 'Dose marked as missed',
+            'hi-IN': 'खुराक छूटी हुई मानी गई',
+            'mr-IN': 'डोस चुकला म्हणून नोंदवले'
         }
     };
 
-    const labels = buttonLabels[language] || buttonLabels['en-US'];
-    const message = messages[language] || messages['en-US'];
+    const getText = (key) => t[key]?.[language] || t[key]?.['en-US'];
+    const message = getText('message');
 
-    // Check notification status on mount
+    // Request notification permission on mount
     useEffect(() => {
-        if ('Notification' in window) {
-            setNotificationStatus(Notification.permission);
-            if (Notification.permission === 'default') {
-                setShowNotificationPrompt(true);
-            }
-        } else {
-            setNotificationStatus('unsupported');
-        }
+        requestNotificationPermission();
     }, []);
 
-    // Handler for enabling notifications (must be called from user gesture)
-    const handleEnableNotifications = async () => {
-        const result = await requestNotificationPermission();
-        setNotificationStatus(result);
-        setShowNotificationPrompt(false);
+    // Track if notification was sent
+    const missedNotificationSent = useRef(false);
 
-        if (result === 'granted') {
-            // Send a test notification to confirm it works
-            triggerBrowserNotification(
-                '🔔 Notifications Enabled!',
-                'You will now receive medication reminders.'
-            );
-        }
-    };
-
-    // Set up "missed dose" notification after 15 seconds (demo) - change to 60000 for production
+    // Start alerts on mount
     useEffect(() => {
-        if (dismissed || snoozed || missedNotificationSent.current) return;
+        if (status !== 'active') return;
 
-        console.log('Setting up missed dose notification timer (15 seconds for demo)');
-
-        reminderTimeoutRef.current = setTimeout(() => {
-            if (!dismissed && !snoozed && !missedNotificationSent.current) {
-                missedNotificationSent.current = true;
-                console.log('Triggering missed dose notification');
-
-                // Trigger browser notification
-                triggerBrowserNotification(
-                    '⚠️ Medication Reminder',
-                    `${userName}, you haven't taken your ${medicine.name} yet. Please take it now!`
-                );
-
-                // Intense haptic feedback
-                if ('vibrate' in navigator) {
-                    navigator.vibrate([500, 200, 500, 200, 500]);
-                }
-            }
-        }, 15000); // 15 seconds for demo - change to 60000 for production
-
-        return () => {
-            if (reminderTimeoutRef.current) {
-                clearTimeout(reminderTimeoutRef.current);
-            }
-        };
-    }, [dismissed, snoozed, userName, medicine.name]);
-
-    // Continuous alert haptic and voice announcements
-    useEffect(() => {
-        if (snoozed) return;
-
-        const vibrationInterval = setInterval(() => {
+        // Continuous alert haptic
+        vibrationRef.current = setInterval(() => {
             triggerAlert();
         }, 2000);
 
-        const voiceInterval = setInterval(() => {
-            if (!dismissed) {
-                announce(message);
-            }
+        // Voice announcement every 10 seconds
+        voiceRef.current = setInterval(() => {
+            announce(message);
         }, 10000);
 
         // Initial announcement
         announce(message);
 
-        return () => {
-            clearInterval(vibrationInterval);
-            clearInterval(voiceInterval);
-        };
-    }, [message, announce, dismissed, snoozed]);
-
-    // Check for voice commands
-    useEffect(() => {
-        if (transcript) {
-            const lowerTranscript = transcript.toLowerCase();
-            if (lowerTranscript.includes('taken') ||
-                lowerTranscript.includes('ले लिया') ||
-                lowerTranscript.includes('घेतली')) {
-                handleTaken();
-            } else if (lowerTranscript.includes('snooze') ||
-                lowerTranscript.includes('स्नूज़') ||
-                lowerTranscript.includes('स्नूझ')) {
-                handleSnooze();
+        // ═══════════════════════════════════════════════════════════
+        // SERVERLESS NOTIFICATION: Fire browser notification after 1 minute
+        // if user hasn't clicked "Taken" (demo simulation)
+        // ═══════════════════════════════════════════════════════════
+        const missedDoseTimeout = setTimeout(() => {
+            if (status === 'active' && !missedNotificationSent.current) {
+                missedNotificationSent.current = true;
+                // Pass full medicine object for rich description
+                triggerMissedDoseNotification(medicine, language);
             }
-        }
-    }, [transcript]);
+        }, 60000); // 1 minute
 
-    const handleTaken = useCallback(() => {
+        return () => {
+            if (vibrationRef.current) clearInterval(vibrationRef.current);
+            if (voiceRef.current) clearInterval(voiceRef.current);
+            clearTimeout(missedDoseTimeout);
+        };
+    }, [message, announce, status, medicine, language]);
+
+    // Voice command detection
+    useEffect(() => {
+        if (!transcript || status !== 'active') return;
+
+        const cmd = transcript.toLowerCase();
+        
+        // Check for "taken" commands
+        const takenPatterns = ['taken', 'ले लिया', 'ली', 'घेतले', 'घेतली', 'done', 'हो गया'];
+        if (takenPatterns.some(p => cmd.includes(p))) {
+            resetTranscript();
+            handleTaken();
+            return;
+        }
+
+        // Check for "later" commands
+        const laterPatterns = ['later', 'बाद में', 'नंतर', 'snooze', 'remind'];
+        if (laterPatterns.some(p => cmd.includes(p))) {
+            resetTranscript();
+            handleLater();
+            return;
+        }
+
+        // Check for "not taking" commands
+        const skipPatterns = ['not taking', 'skip', 'नहीं', 'नाही', 'छोड़'];
+        if (skipPatterns.some(p => cmd.includes(p))) {
+            resetTranscript();
+            handleNotTaking();
+            return;
+        }
+    }, [transcript, status]);
+
+    // Handle "Taken" action with Inventory Decrement
+    const handleTaken = async () => {
         triggerSuccess();
-        setDismissed(true);
+        setStatus('taken');
 
-        // Clear any pending notification timeout
-        if (reminderTimeoutRef.current) {
-            clearTimeout(reminderTimeoutRef.current);
+        // Log to Firestore
+        await logMedicationAction(
+            medicine.id || 'unknown',
+            medicine.name,
+            'taken',
+            { timing, scheduledTime: new Date().toISOString() }
+        );
+
+        // Phase 4: Inventory Decrement
+        const allMedicines = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+        const updatedMedicines = allMedicines.map(m => {
+            if (m.id === medicine.id || (m.name === medicine.name && !medicine.id)) {
+                const newQty = Math.max((m.quantity || 30) - 1, 0);
+                return { ...m, quantity: newQty };
+            }
+            return m;
+        });
+        localStorage.setItem('saarthi_medicines', JSON.stringify(updatedMedicines));
+
+        // Check for low stock (quantity < 3)
+        const updatedMed = updatedMedicines.find(m => 
+            m.id === medicine.id || (m.name === medicine.name && !medicine.id)
+        );
+        if (updatedMed && updatedMed.quantity < 3) {
+            const lowStockMsg = {
+                'en-US': `Warning! You are running low on ${medicine.name}.`,
+                'hi-IN': `चेतावनी! आपकी ${medicine.name} कम हो रही है।`,
+                'mr-IN': `चेतावणी! तुमची ${medicine.name} कमी होत आहे.`
+            };
+            setTimeout(() => {
+                announce(lowStockMsg[language] || lowStockMsg['en-US']);
+            }, 1500);
         }
 
-        // Open WhatsApp to notify caretaker
+        // Stop alerts
+        if (vibrationRef.current) clearInterval(vibrationRef.current);
+        if (voiceRef.current) clearInterval(voiceRef.current);
+
+        // Navigate after delay
         setTimeout(() => {
-            notifyCaretaker(medicine.name, caretakerPhone);
-        }, 300);
+            navigate('/dashboard');
+        }, 2500);
+    };
+
+    // Handle "Later" action (snooze for 15 mins)
+    const handleLater = async () => {
+        triggerAction();
+        setStatus('snoozed');
+
+        // Log snooze to Firestore
+        await logMedicationAction(
+            medicine.id || 'unknown',
+            medicine.name,
+            'snoozed',
+            { timing, snoozeMinutes: 15 }
+        );
+
+        // Stop current alerts
+        if (vibrationRef.current) clearInterval(vibrationRef.current);
+        if (voiceRef.current) clearInterval(voiceRef.current);
+
+        // Announce snooze
+        announce(getText('snoozed'));
+
+        // TODO: Schedule a new reminder in 15 minutes (would use notification API)
 
         setTimeout(() => {
             navigate('/dashboard');
-        }, 1000);
-    }, [navigate, medicine.name, caretakerPhone]);
+        }, 2000);
+    };
 
-    const handleSnooze = useCallback(() => {
-        // Haptic feedback for snooze
-        if ('vibrate' in navigator) {
-            navigator.vibrate([100, 50, 100]);
-        }
+    // Handle "Not Taking" action
+    const handleNotTaking = async () => {
+        triggerAlert();
+        setStatus('missed');
 
-        setSnoozed(true);
+        // Log missed to Firestore
+        await logMedicationAction(
+            medicine.id || 'unknown',
+            medicine.name,
+            'missed',
+            { timing, reason: 'user_declined' }
+        );
 
-        // Clear pending notification
-        if (reminderTimeoutRef.current) {
-            clearTimeout(reminderTimeoutRef.current);
-        }
+        // Stop alerts
+        if (vibrationRef.current) clearInterval(vibrationRef.current);
+        if (voiceRef.current) clearInterval(voiceRef.current);
 
-        // Re-trigger after 5 minutes (300000ms), using 10 seconds for demo
-        setTimeout(() => {
-            setSnoozed(false);
-            missedNotificationSent.current = false;
-            triggerAlert();
-            announce(message);
-        }, 10000); // 10 seconds for demo (change to 300000 for production)
+        announce(getText('missed'));
 
-        // Navigate away temporarily
         setTimeout(() => {
             navigate('/dashboard');
-        }, 500);
-    }, [navigate, message, announce]);
+        }, 2000);
+    };
 
-    const handleSkip = useCallback(() => {
-        // Haptic feedback for skip
-        if ('vibrate' in navigator) {
-            navigator.vibrate([50, 30, 50]);
-        }
-
-        // Clear pending notification
-        if (reminderTimeoutRef.current) {
-            clearTimeout(reminderTimeoutRef.current);
-        }
-
-        setDismissed(true);
-        setTimeout(() => {
-            navigate('/dashboard');
-        }, 500);
-    }, [navigate]);
-
-    // Success confirmation screen
-    if (dismissed) {
+    // Success/Snoozed/Missed confirmation screens
+    if (status === 'taken') {
         return (
             <motion.div
-                className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-400 via-emerald-500 to-green-600"
+                className="min-h-screen flex flex-col items-center justify-center bg-green-500 text-white"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
             >
                 <motion.div
-                    className="text-9xl mb-6"
+                    className="text-8xl mb-4"
                     initial={{ scale: 0 }}
                     animate={{ scale: 1 }}
-                    transition={{ type: 'spring', stiffness: 200, damping: 10 }}
+                    transition={{ type: 'spring', stiffness: 200 }}
                 >
                     ✓
                 </motion.div>
-                <motion.p
-                    className="text-white text-3xl font-bold"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                >
-                    Great job, {userName}!
-                </motion.p>
-                <motion.p
-                    className="text-white/80 text-xl mt-2"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
-                >
-                    Notifying your caretaker...
-                </motion.p>
+                <p className="text-2xl">Logged!</p>
             </motion.div>
         );
     }
 
-    // Snoozed confirmation screen
-    if (snoozed) {
+    if (status === 'snoozed') {
         return (
             <motion.div
-                className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-amber-400 via-orange-500 to-amber-600"
+                className="min-h-screen flex flex-col items-center justify-center bg-yellow-500 text-white"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
             >
-                <motion.div
-                    className="text-9xl mb-6"
-                    animate={{ rotate: [0, 15, -15, 0] }}
-                    transition={{ repeat: Infinity, duration: 2 }}
-                >
-                    ⏰
-                </motion.div>
-                <motion.p
-                    className="text-white text-3xl font-bold text-center px-6"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                >
-                    Snoozed! We'll remind you soon.
-                </motion.p>
+                <div className="text-8xl mb-4">⏰</div>
+                <p className="text-2xl text-center px-8">{getText('snoozed')}</p>
             </motion.div>
         );
     }
 
+    if (status === 'missed') {
+        return (
+            <motion.div
+                className="min-h-screen flex flex-col items-center justify-center bg-gray-600 text-white"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+            >
+                <div className="text-8xl mb-4">😔</div>
+                <p className="text-2xl text-center px-8">{getText('missed')}</p>
+            </motion.div>
+        );
+    }
+
+    // Main Alarm UI
     return (
         <motion.div
-            className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-red-500 via-orange-500 to-red-600 text-white relative overflow-hidden"
+            className="min-h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-red-500 via-orange-500 to-red-600 text-white relative overflow-hidden"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
         >
             {/* Pulsing Background */}
             <motion.div
                 className="absolute inset-0 bg-red-600/30"
-                animate={{
-                    opacity: [0.3, 0.6, 0.3]
-                }}
-                transition={{
-                    duration: 2,
-                    repeat: Infinity,
-                    ease: "easeInOut"
-                }}
+                animate={{ opacity: [0.3, 0.6, 0.3] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
             />
 
             {/* Content */}
             <div className="relative z-10 text-center w-full max-w-md">
                 {/* Alert Icon */}
                 <motion.div
-                    className="mb-6"
-                    animate={{
-                        scale: [1, 1.2, 1],
-                        rotate: [0, 10, -10, 0]
-                    }}
-                    transition={{
-                        duration: 1.5,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                    }}
+                    className="mb-4"
+                    animate={{ scale: [1, 1.2, 1], rotate: [0, 10, -10, 0] }}
+                    transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
                 >
-                    <div className="text-8xl mb-4">⏰</div>
+                    <div className="text-7xl">⏰</div>
                 </motion.div>
+
+                {/* Title */}
+                <h1 className="text-4xl font-bold mb-4">{getText('title')}</h1>
 
                 {/* Message */}
-                <motion.h1
-                    className="text-4xl md:text-5xl font-display font-bold mb-4 leading-tight"
-                    initial={{ scale: 0.9 }}
-                    animate={{ scale: 1 }}
-                    transition={{ delay: 0.2 }}
-                >
-                    Medicine Time!
-                </motion.h1>
+                <p className="text-xl mb-6 leading-relaxed px-2">{message}</p>
 
-                <motion.p
-                    className="text-xl md:text-2xl mb-6 leading-relaxed px-4"
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                >
-                    {message}
-                </motion.p>
-
-                {/* Visual Pill */}
+                {/* Visual Pill - User's Photo or Colored Circle */}
                 <motion.div
                     className="flex justify-center mb-8"
-                    animate={{
-                        y: [0, -15, 0]
-                    }}
-                    transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                    }}
+                    animate={{ y: [0, -10, 0] }}
+                    transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                 >
-                    <div
-                        className="w-20 h-20 rounded-full shadow-premium-lg border-4 border-white"
-                        style={{
-                            backgroundColor: medicine.color,
-                            boxShadow: '0 15px 40px rgba(0,0,0,0.4), inset 0 -8px 15px rgba(0,0,0,0.2)'
-                        }}
-                    />
+                    {medicine.userPhoto ? (
+                        <img 
+                            src={medicine.userPhoto} 
+                            alt={medicine.name}
+                            className="w-28 h-28 rounded-xl object-cover border-4 border-white shadow-2xl"
+                        />
+                    ) : (
+                        <div
+                            className="w-28 h-28 rounded-full shadow-2xl border-4 border-white flex items-center justify-center"
+                            style={{
+                                backgroundColor: pillColor,
+                                boxShadow: '0 15px 40px rgba(0,0,0,0.4), inset 0 -8px 15px rgba(0,0,0,0.2)'
+                            }}
+                        >
+                            <span className="text-white text-sm font-bold opacity-80">
+                                {medicine.dosage}
+                            </span>
+                        </div>
+                    )}
                 </motion.div>
 
-                {/* Notification Permission Prompt */}
-                {showNotificationPrompt && notificationStatus === 'default' && (
-                    <motion.div
-                        className="mb-6 p-4 bg-white/20 backdrop-blur-sm rounded-2xl border border-white/30"
-                        initial={{ opacity: 0, y: -20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                    >
-                        <p className="text-white text-lg mb-3">
-                            🔔 Enable notifications to get reminders even when this tab is in background
-                        </p>
-                        <button
-                            onClick={handleEnableNotifications}
-                            className="px-6 py-3 bg-white text-blue-600 font-bold rounded-xl shadow-lg hover:bg-blue-50 transition-colors"
-                        >
-                            Enable Notifications
-                        </button>
-                    </motion.div>
-                )}
+                {/* Medicine Name & Details */}
+                <p className="text-2xl font-bold mb-6">{medicine.name}</p>
 
-                {/* === HIGH-CONTRAST ELDERLY-FRIENDLY BUTTONS === */}
-                <div className="space-y-4 px-2">
-                    {/* TAKEN Button - Large Green */}
+                {/* Action Buttons - 3 buttons as specified */}
+                <div className="space-y-3 mb-6">
+                    {/* TAKEN Button - Large, Primary */}
                     <motion.button
                         onClick={handleTaken}
-                        className="
-                            w-full
-                            min-h-[100px] px-8 py-5
-                            bg-green-500 hover:bg-green-400
-                            text-white
-                            rounded-3xl
-                            font-bold text-2xl md:text-3xl
-                            shadow-2xl
-                            border-4 border-green-300
-                            flex items-center justify-center gap-3
-                        "
-                        whileHover={{ scale: 1.03 }}
-                        whileTap={{ scale: 0.97 }}
+                        className="w-full min-h-[100px] px-6 py-4 bg-white text-green-600 rounded-3xl font-bold text-2xl shadow-2xl border-4 border-green-400"
+                        whileHover={{ scale: 1.02 }}
+                        whileTap={{ scale: 0.95 }}
                         animate={{
                             boxShadow: [
-                                '0 0 0 0 rgba(34, 197, 94, 0.7)',
-                                '0 0 0 15px rgba(34, 197, 94, 0)',
+                                '0 0 0 0 rgba(255,255,255,0.7)',
+                                '0 0 0 15px rgba(255,255,255,0)',
                             ]
                         }}
-                        transition={{
-                            duration: 1.5,
-                            repeat: Infinity,
-                            ease: "easeOut"
-                        }}
+                        transition={{ duration: 1.5, repeat: Infinity }}
                     >
-                        <span className="text-4xl">✓</span>
-                        <span>{labels.taken}</span>
+                        {getText('taken')}
                     </motion.button>
 
-                    {/* SNOOZE Button - Amber/Orange */}
-                    <motion.button
-                        onClick={handleSnooze}
-                        className="
-                            w-full
-                            min-h-[80px] px-6 py-4
-                            bg-amber-500 hover:bg-amber-400
-                            text-white
-                            rounded-2xl
-                            font-bold text-xl md:text-2xl
-                            shadow-xl
-                            border-3 border-amber-300
-                            flex items-center justify-center gap-3
-                        "
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                    >
-                        <span className="text-3xl">⏰</span>
-                        <span>{labels.snooze}</span>
-                    </motion.button>
+                    {/* Secondary Buttons Row */}
+                    <div className="flex gap-3">
+                        {/* LATER Button */}
+                        <motion.button
+                            onClick={handleLater}
+                            className="flex-1 min-h-[70px] px-4 py-3 bg-yellow-400 text-yellow-900 rounded-2xl font-bold text-lg shadow-lg"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            {getText('later')}
+                        </motion.button>
 
-                    {/* SKIP Button - Red (smaller, less prominent) */}
-                    <motion.button
-                        onClick={handleSkip}
-                        className="
-                            w-full
-                            min-h-[70px] px-6 py-3
-                            bg-red-600/80 hover:bg-red-500
-                            text-white
-                            rounded-2xl
-                            font-semibold text-lg md:text-xl
-                            shadow-lg
-                            border-2 border-red-400/50
-                            flex items-center justify-center gap-3
-                        "
-                        whileHover={{ scale: 1.02 }}
-                        whileTap={{ scale: 0.98 }}
-                    >
-                        <span className="text-2xl">✗</span>
-                        <span>{labels.skip}</span>
-                    </motion.button>
+                        {/* NOT TAKING Button */}
+                        <motion.button
+                            onClick={handleNotTaking}
+                            className="flex-1 min-h-[70px] px-4 py-3 bg-white/20 text-white rounded-2xl font-bold text-lg border-2 border-white/40"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            {getText('notTaking')}
+                        </motion.button>
+                    </div>
                 </div>
 
-                {/* Voice Command Hint */}
+                {/* Voice Hint */}
                 <motion.p
-                    className="mt-6 text-lg opacity-90"
+                    className="text-base opacity-80"
                     initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.5 }}
+                    animate={{ opacity: [0.6, 1, 0.6] }}
+                    transition={{ duration: 2, repeat: Infinity }}
                 >
-                    {labels.voiceHint}
+                    {getText('voiceHint')}
                 </motion.p>
 
-                {/* Notification Status Indicator */}
-                {notificationStatus === 'granted' && (
+                {/* Listening indicator */}
+                {isListening && (
                     <motion.div
-                        className="mt-4 flex items-center justify-center gap-2 text-sm opacity-75"
+                        className="mt-4 flex items-center justify-center gap-2"
                         initial={{ opacity: 0 }}
-                        animate={{ opacity: 0.75 }}
-                        transition={{ delay: 1 }}
+                        animate={{ opacity: 1 }}
                     >
-                        <span className="w-2 h-2 bg-green-300 rounded-full animate-pulse" />
-                        <span>Notifications enabled</span>
-                    </motion.div>
-                )}
-                {notificationStatus === 'denied' && (
-                    <motion.div
-                        className="mt-4 flex items-center justify-center gap-2 text-sm opacity-75"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 0.75 }}
-                        transition={{ delay: 1 }}
-                    >
-                        <span className="w-2 h-2 bg-red-400 rounded-full" />
-                        <span>Notifications blocked - check browser settings</span>
+                        <motion.div
+                            className="w-3 h-3 bg-white rounded-full"
+                            animate={{ scale: [1, 1.5, 1] }}
+                            transition={{ duration: 0.8, repeat: Infinity }}
+                        />
+                        <span>Listening...</span>
                     </motion.div>
                 )}
             </div>

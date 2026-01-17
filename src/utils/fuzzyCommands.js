@@ -1,42 +1,48 @@
 import Fuse from 'fuse.js';
 
-// Command database with synonyms
+// Command database with synonyms - Simple One-Word Elder-Friendly Keywords
 const commands = [
     {
         action: 'HOME',
-        keywords: ['home', 'dashboard', 'main menu', 'go home', 'return', 'back home'],
-        hindiKeywords: ['होम', 'घर', 'मुख्य मेनू', 'वापस'],
-        marathiKeywords: ['घर', 'मुख्य मेनू', 'परत']
+        keywords: ['home', 'dashboard', 'main', 'go home'],
+        hindiKeywords: ['होम', 'घर', 'डैशबोर्ड'],
+        marathiKeywords: ['घर', 'होम', 'डॅशबोर्ड']
     },
     {
         action: 'SCAN',
-        keywords: ['scan', 'take picture', 'photo', 'camera', 'new prescription', 'scan prescription'],
-        hindiKeywords: ['स्कैन', 'फोटो', 'कैमरा', 'तस्वीर'],
-        marathiKeywords: ['स्कॅन', 'फोटो', 'कॅमेरा', 'चित्र']
+        keywords: ['scan', 'camera', 'photo', 'picture'],
+        hindiKeywords: ['स्कैन', 'कैमरा', 'फोटो'],
+        marathiKeywords: ['स्कॅन', 'कॅमेरा', 'फोटो']
     },
     {
         action: 'MEDICINES',
-        keywords: ['medicines', 'my medicines', 'pills', 'drugs', 'show medicines', 'show pills'],
-        hindiKeywords: ['दवाइयां', 'मेरी दवाइयां', 'गोलियां'],
-        marathiKeywords: ['औषधे', 'माझी औषधे', 'गोळ्या']
+        keywords: ['medicines', 'pills', 'medicine', 'pill', 'my medicines'],
+        hindiKeywords: ['दवाई', 'दवाइयां', 'गोली', 'गोलियां'],
+        marathiKeywords: ['औषध', 'औषधे', 'गोळी', 'गोळ्या']
     },
     {
         action: 'REMINDERS',
-        keywords: ['reminders', 'alerts', 'notifications', 'my reminders'],
-        hindiKeywords: ['रिमाइंडर', 'अलर्ट', 'सूचनाएं'],
-        marathiKeywords: ['आठवणी', 'सूचना']
+        keywords: ['reminders', 'reminder', 'alarm', 'alerts'],
+        hindiKeywords: ['रिमाइंडर', 'अलार्म', 'याद'],
+        marathiKeywords: ['रिमाइंडर', 'आठवण', 'अलार्म']
+    },
+    {
+        action: 'BACK',
+        keywords: ['back', 'return', 'go back', 'previous'],
+        hindiKeywords: ['वापस', 'पीछे', 'लौटो'],
+        marathiKeywords: ['मागे', 'परत', 'मागे जा']
     },
     {
         action: 'REPEAT',
-        keywords: ['repeat', 'say again', 'what', 'pardon', 'again'],
-        hindiKeywords: ['दोहराएं', 'फिर से', 'क्या'],
-        marathiKeywords: ['पुन्हा', 'परत सांगा']
+        keywords: ['repeat', 'again', 'what', 'pardon'],
+        hindiKeywords: ['दोहराओ', 'फिर से', 'क्या'],
+        marathiKeywords: ['पुन्हा', 'परत सांग']
     },
     {
         action: 'HELP',
-        keywords: ['help', 'what can you do', 'commands', 'assist'],
-        hindiKeywords: ['मदद', 'सहायता'],
-        marathiKeywords: ['मदत', 'साहाय्य']
+        keywords: ['help', 'commands', 'assist'],
+        hindiKeywords: ['मदद', 'सहायता', 'हेल्प'],
+        marathiKeywords: ['मदत', 'साहाय्य', 'हेल्प']
     }
 ];
 

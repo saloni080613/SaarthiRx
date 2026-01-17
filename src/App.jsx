@@ -15,6 +15,9 @@ import ScanPrescription from './pages/ScanPrescription';
 import PrescriptionView from './pages/PrescriptionView';
 import ReminderList from './pages/ReminderList';
 import ReminderAlert from './pages/ReminderAlert';
+import MyMedicines from './pages/MyMedicines';
+import AlarmPage from './pages/AlarmPage';
+import DevTools from './components/DevTools';
 
 
 function AnimatedRoutes() {
@@ -35,6 +38,7 @@ function AnimatedRoutes() {
         <Route path="/reminder" element={<Navigate to="/reminders" replace />} />
         <Route path="/reminder/alert/:id" element={<ReminderAlert />} />
         <Route path="/reminder/alert" element={<ReminderAlert />} />
+        <Route path="/medicines" element={<MyMedicines />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
@@ -42,19 +46,31 @@ function AnimatedRoutes() {
 }
 
 function App() {
+  const location = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isAlarmPage = location.startsWith('/alarm');
 
   return (
     <AppProvider>
       <VoiceProvider>
         <VoiceButlerProvider>
           <Router>
-            <PremiumLayout>
-              <VoiceNavigation>
-                <ReminderScheduler>
-                  <AnimatedRoutes />
-                </ReminderScheduler>
-              </VoiceNavigation>
-            </PremiumLayout>
+            {/* Alarm Page - Standalone (no layout wrapper) */}
+            {isAlarmPage ? (
+              <Routes>
+                <Route path="/alarm/:id" element={<AlarmPage />} />
+                <Route path="/alarm" element={<AlarmPage />} />
+              </Routes>
+            ) : (
+              /* Regular pages with PremiumLayout and ReminderScheduler */
+              <PremiumLayout>
+                <VoiceNavigation>
+                  <ReminderScheduler>
+                    <AnimatedRoutes />
+                    <DevTools />
+                  </ReminderScheduler>
+                </VoiceNavigation>
+              </PremiumLayout>
+            )}
           </Router>
         </VoiceButlerProvider>
       </VoiceProvider>

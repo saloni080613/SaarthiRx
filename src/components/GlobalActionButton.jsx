@@ -92,11 +92,12 @@ const GlobalActionButton = ({ isActive = false }) => {
             )}
             */}
 
-            {/* Floating Action Button - Fixed Centered Position */}
+            {/* Floating Action Button - Fixed Centered Position (no transform to avoid shift) */}
             <motion.button
                 onClick={handleClick}
                 className={`
                     fixed bottom-6 sm:bottom-8 z-40
+                    left-0 right-0 mx-auto
                     ${buttonSizeClass}
                     rounded-full
                     flex items-center justify-center
@@ -104,10 +105,6 @@ const GlobalActionButton = ({ isActive = false }) => {
                     bg-gradient-to-br from-orange-400 via-primary to-orange-600
                     border-4 border-white/30
                 `}
-                style={{
-                    left: '50%',
-                    transform: 'translateX(-50%)'
-                }}
                 whileTap={{ scale: 0.95 }}
                 animate={isListening || isActive ? {
                     boxShadow: [

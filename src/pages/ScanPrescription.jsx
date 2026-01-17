@@ -1,6 +1,7 @@
 /**
  * ScanPrescription Page
  * Elder-friendly prescription capture with Gemini AI analysis
+ * Enhanced with Voice Negotiation, Visual Verifier, and Auto-Scheduler
  */
 
 import { useState, useRef, useEffect } from 'react';
@@ -11,8 +12,12 @@ import { useVoice } from '../context/VoiceContext';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { compressImage, createPreviewUrl, revokePreviewUrl, clearImageData, validateImageFile } from '../utils/imageUtils';
 import { analyzePrescription, checkDrugInteractions, generateVoiceSummary, generateConflictWarning } from '../services/geminiService';
+import { saveMedicines } from '../services/medicationService';
+import { createRemindersFromPrescription } from '../services/reminderService';
 import { getPrompt } from '../utils/translations';
 import GlobalActionButton from '../components/GlobalActionButton';
+import VoiceNegotiation from '../components/VoiceNegotiation';
+import MedicineVerifier from '../components/MedicineVerifier';
 
 // Scan states
 const SCAN_STATES = {
@@ -35,6 +40,12 @@ const ScanPrescription = () => {
     const [analysisResult, setAnalysisResult] = useState(null);
     const [conflicts, setConflicts] = useState([]);
     const [error, setError] = useState('');
+    
+    // Voice Negotiation & Visual Verifier states
+    const [showNegotiation, setShowNegotiation] = useState(false);
+    const [showVerifier, setShowVerifier] = useState(false);
+    const [selectedMedicineForVerify, setSelectedMedicineForVerify] = useState(null);
+    const [savedMedicineIds, setSavedMedicineIds] = useState([]);
 
     const fileInputRef = useRef(null);
     const cameraInputRef = useRef(null);
@@ -315,6 +326,12 @@ const ScanPrescription = () => {
                     }, 1500);
                 }
 
+                // ═══════════════════════════════════════════════════════════
+                // PHASE 1: AUTO-COMMIT - Zero-Touch Medicine & Reminder Save
+                // No "Save" button needed - happens instantly after analysis
+                // ═══════════════════════════════════════════════════════════
+                await autoCommitMedicinesAndReminders(result.data);
+
             } else {
                 // Better error message for elders
                 const errorMsg = result.isQuotaError
@@ -334,35 +351,176 @@ const ScanPrescription = () => {
         }
     };
 
-    // Save medicines and set reminders
-    const handleSaveAndRemind = () => {
+    // ═══════════════════════════════════════════════════════════════════════
+    // PHASE 1: AUTO-COMMIT - Brain-to-Body Connection
+    // Automatically saves medicines & creates reminders after Gemini analysis
+    // ═══════════════════════════════════════════════════════════════════════
+    const autoCommitMedicinesAndReminders = async (analysisData) => {
+        if (!analysisData?.medicines) return;
+
+        try {
+            // Save to Firestore (with deduplication)
+            const saveResult = await saveMedicines(analysisData.medicines, {
+                doctorName: analysisData.doctorName,
+                date: analysisData.date
+            });
+            
+            const { savedIds, duplicates, newCount, duplicateCount } = saveResult;
+            setSavedMedicineIds(savedIds);
+
+            // Only save NEW medicines to localStorage (not duplicates)
+            if (newCount > 0) {
+                const existing = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+                const newMedicines = analysisData.medicines
+                    .filter(m => !duplicates.includes(m.name))
+                    .map((m, i) => ({
+                        ...m,
+                        id: savedIds[i],
+                        quantity: 30,
+                        addedAt: Date.now(),
+                        prescriptionDate: analysisData.date
+                    }));
+                localStorage.setItem('saarthi_medicines', JSON.stringify([...existing, ...newMedicines]));
+            }
+
+            // Auto-Scheduler: Create reminders with proper ISO timestamps
+            const newMeds = analysisData.medicines.filter(m => !duplicates.includes(m.name));
+            let remindersCreated = 0;
+            if (newMeds.length > 0) {
+                const schedulerResult = createRemindersFromPrescription(newMeds, language);
+                remindersCreated = schedulerResult.created;
+                console.log(`📅 Auto-scheduled ${remindersCreated} reminders`);
+            }
+
+            // Generate SINGLE combined voice feedback
+            let voiceMessage;
+            if (duplicateCount > 0 && newCount > 0) {
+                voiceMessage = {
+                    'en-US': `I have automatically added ${newCount} new ${newCount === 1 ? 'medicine' : 'medicines'} and set ${remindersCreated} ${remindersCreated === 1 ? 'reminder' : 'reminders'}. ${duplicateCount} ${duplicateCount === 1 ? 'was' : 'were'} already in your list.`,
+                    'hi-IN': `मैंने ${newCount} नई ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ दी और ${remindersCreated} रिमाइंडर सेट कर दिए। ${duplicateCount} पहले से आपकी सूची में ${duplicateCount === 1 ? 'थी' : 'थीं'}।`,
+                    'mr-IN': `मी ${newCount} नवीन ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले आणि ${remindersCreated} रिमाइंडर सेट केले. ${duplicateCount} आधीपासून तुमच्या यादीत ${duplicateCount === 1 ? 'होते' : 'होती'}.`
+                };
+            } else if (duplicateCount > 0 && newCount === 0) {
+                voiceMessage = {
+                    'en-US': `All ${duplicateCount} medicines are already in your list. No new medicines added.`,
+                    'hi-IN': `सभी ${duplicateCount} दवाइयां पहले से आपकी सूची में हैं। कोई नई दवाई नहीं जोड़ी।`,
+                    'mr-IN': `सर्व ${duplicateCount} औषधे आधीपासून तुमच्या यादीत आहेत. कोणतेही नवीन औषध जोडले नाही.`
+                };
+            } else {
+                voiceMessage = {
+                    'en-US': `I have automatically added ${newCount} ${newCount === 1 ? 'medicine' : 'medicines'} and set ${remindersCreated} ${remindersCreated === 1 ? 'reminder' : 'reminders'}. I will remind you at the right time.`,
+                    'hi-IN': `मैंने ${newCount} ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ दी और ${remindersCreated} रिमाइंडर सेट कर दिए। मैं आपको सही समय पर याद दिलाऊंगा।`,
+                    'mr-IN': `मी ${newCount} ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले आणि ${remindersCreated} रिमाइंडर सेट केले. मी तुम्हाला योग्य वेळी आठवण करून देईन.`
+                };
+            }
+            
+            // Wait before auto-commit announcement
+            setTimeout(async () => {
+                await speak(voiceMessage[language] || voiceMessage['en-US']);
+                triggerSuccess();
+                
+                // Navigate to dashboard after voice confirmation
+                setTimeout(() => {
+                    navigate('/dashboard');
+                }, 2000);
+            }, 2000);
+
+        } catch (err) {
+            console.error('Auto-commit error:', err);
+            // Still navigate on error - at least show results
+        }
+    };
+
+    // Save medicines and set reminders (with Auto-Scheduler + Deduplication)
+    const handleSaveAndRemind = async () => {
         if (!analysisResult?.medicines) return;
 
         triggerAction();
 
-        // Save to localStorage
-        const existing = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
-        const updated = [...existing, ...analysisResult.medicines.map(m => ({
-            ...m,
-            addedAt: Date.now(),
-            prescriptionDate: analysisResult.date
-        }))];
-        localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
+        try {
+            // Save to Firestore (with deduplication)
+            const saveResult = await saveMedicines(analysisResult.medicines, {
+                doctorName: analysisResult.doctorName,
+                date: analysisResult.date
+            });
+            
+            const { savedIds, duplicates, newCount, duplicateCount } = saveResult;
+            setSavedMedicineIds(savedIds);
 
-        // TODO: Schedule notifications based on timing
-        const savedMsg = {
-            'en-US': 'Medicines saved. I will remind you at the right time.',
-            'hi-IN': 'दवाइयां सहेजी गईं। मैं आपको सही समय पर याद दिलाऊंगा।',
-            'mr-IN': 'औषधे जतन झाली. मी तुम्हाला योग्य वेळी आठवण करून देईन.'
-        };
-        speak(savedMsg[language] || savedMsg['hi-IN']);
+            // Only save NEW medicines to localStorage (not duplicates)
+            if (newCount > 0) {
+                const existing = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+                const newMedicines = analysisResult.medicines
+                    .filter(m => !duplicates.includes(m.name))
+                    .map((m, i) => ({
+                        ...m,
+                        id: savedIds[i],
+                        quantity: 30,
+                        addedAt: Date.now(),
+                        prescriptionDate: analysisResult.date
+                    }));
+                localStorage.setItem('saarthi_medicines', JSON.stringify([...existing, ...newMedicines]));
+            }
 
-        triggerSuccess();
+            // Phase 2: Auto-Scheduler - Only for NEW medicines
+            const newMeds = analysisResult.medicines.filter(m => !duplicates.includes(m.name));
+            if (newMeds.length > 0) {
+                const schedulerResult = createRemindersFromPrescription(newMeds, language);
+                console.log(`📅 Auto-scheduled ${schedulerResult.created} reminders`);
+            }
 
-        // Navigate to dashboard
-        setTimeout(() => {
+            // Generate friendly voice feedback about duplicates
+            let voiceMessage;
+            if (duplicateCount > 0 && newCount > 0) {
+                // Some new, some duplicates
+                voiceMessage = {
+                    'en-US': `I added ${newCount} new ${newCount === 1 ? 'medicine' : 'medicines'}. ${duplicateCount} ${duplicateCount === 1 ? 'was' : 'were'} already in your list.`,
+                    'hi-IN': `मैंने ${newCount} नई ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ी। ${duplicateCount} पहले से आपकी सूची में ${duplicateCount === 1 ? 'थी' : 'थीं'}।`,
+                    'mr-IN': `मी ${newCount} नवीन ${newCount === 1 ? 'औषध' : 'औषधे'} जोडली. ${duplicateCount} आधीपासून तुमच्या यादीत ${duplicateCount === 1 ? 'होते' : 'होती'}.`
+                };
+            } else if (duplicateCount > 0 && newCount === 0) {
+                // All duplicates
+                voiceMessage = {
+                    'en-US': `All ${duplicateCount} medicines are already in your list. I did not add them again.`,
+                    'hi-IN': `सभी ${duplicateCount} दवाइयां पहले से आपकी सूची में हैं। मैंने उन्हें दोबारा नहीं जोड़ा।`,
+                    'mr-IN': `सर्व ${duplicateCount} औषधे आधीपासून तुमच्या यादीत आहेत. मी त्यांना पुन्हा जोडले नाही.`
+                };
+            } else {
+                // All new
+                voiceMessage = {
+                    'en-US': `Added ${newCount} ${newCount === 1 ? 'medicine' : 'medicines'}. I will remind you at the right time.`,
+                    'hi-IN': `${newCount} ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ी। मैं आपको सही समय पर याद दिलाऊंगा।`,
+                    'mr-IN': `${newCount} ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले. मी तुम्हाला योग्य वेळी आठवण करून देईन.`
+                };
+            }
+            await speak(voiceMessage[language] || voiceMessage['en-US']);
+
+            triggerSuccess();
+
+            // Navigate to dashboard
+            setTimeout(() => {
+                navigate('/dashboard');
+            }, 2500);
+        } catch (err) {
+            console.error('Save error:', err);
+            // Still navigate - data is in localStorage
             navigate('/dashboard');
-        }, 2000);
+        }
+    };
+
+    // Open medicine verifier for a specific medicine
+    const handleCheckMedicine = (medicine, index) => {
+        setSelectedMedicineForVerify({
+            ...medicine,
+            id: savedMedicineIds[index] || null
+        });
+        setShowVerifier(true);
+    };
+
+    // Handle voice negotiation complete
+    const handleNegotiationComplete = (updatedTimes) => {
+        setShowNegotiation(false);
+        console.log('Negotiation complete, updated times:', updatedTimes);
     };
 
     // Retry scan
@@ -410,9 +568,21 @@ const ScanPrescription = () => {
                 className="hidden"
             />
 
+            {/* Back Button */}
+            <motion.button
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-800 mb-4"
+                whileTap={{ scale: 0.95 }}
+            >
+                <span className="text-2xl">←</span>
+                <span className="text-lg font-medium">
+                    {language === 'hi-IN' ? 'वापस' : language === 'mr-IN' ? 'मागे' : 'Back'}
+                </span>
+            </motion.button>
+
             {/* Title */}
             <motion.h1
-                className="text-3xl font-bold text-gray-800 text-center mb-8 mt-4"
+                className="text-3xl font-bold text-gray-800 text-center mb-8"
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
             >
@@ -589,15 +759,29 @@ const ScanPrescription = () => {
                             </motion.div>
                         ))}
 
-                        {/* Save & Remind Button */}
-                        <motion.button
-                            onClick={handleSaveAndRemind}
-                            className="w-full p-5 rounded-2xl bg-green-500 text-white text-xl font-bold shadow-lg"
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.98 }}
-                        >
-                            ✅ {getText('saveRemind')}
-                        </motion.button>
+                        {/* Action Buttons - positioned above voice buttons (pb-32 ensures space) */}
+                        <div className="space-y-3 mb-24">
+                            {/* Check My Medicine Button */}
+                            <motion.button
+                                onClick={() => handleCheckMedicine(analysisResult.medicines[0], 0)}
+                                className="w-full p-4 rounded-2xl bg-blue-500 text-white text-lg font-bold shadow-lg flex items-center justify-center gap-3"
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                            >
+                                <span className="text-2xl">🔍</span>
+                                {language === 'hi-IN' ? 'अपनी दवाई जांचें' : language === 'mr-IN' ? 'तुमचे औषध तपासा' : 'Check My Medicine'}
+                            </motion.button>
+
+                            {/* Save & Remind Button */}
+                            <motion.button
+                                onClick={handleSaveAndRemind}
+                                className="w-full p-5 rounded-2xl bg-green-500 text-white text-xl font-bold shadow-lg"
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                            >
+                                ✅ {getText('saveRemind')}
+                            </motion.button>
+                        </div>
                     </motion.div>
                 )}
 
@@ -624,6 +808,31 @@ const ScanPrescription = () => {
                 )}
             </AnimatePresence>
 
+            {/* Voice Negotiation Overlay */}
+            {showNegotiation && analysisResult?.medicines && (
+                <VoiceNegotiation
+                    medicines={analysisResult.medicines}
+                    visible={showNegotiation}
+                    onComplete={handleNegotiationComplete}
+                    onTimesUpdated={(name, hour) => console.log(`Updated ${name} to ${hour}:00`)}
+                />
+            )}
+
+            {/* Medicine Verifier Modal */}
+            {showVerifier && selectedMedicineForVerify && (
+                <MedicineVerifier
+                    medicine={selectedMedicineForVerify}
+                    onVerified={(result) => {
+                        console.log('Verified:', result);
+                    }}
+                    onClose={() => {
+                        setShowVerifier(false);
+                        setSelectedMedicineForVerify(null);
+                    }}
+                />
+            )}
+
+            {/* Global Voice/Mic Button - always at bottom */}
             <GlobalActionButton />
         </motion.div>
     );

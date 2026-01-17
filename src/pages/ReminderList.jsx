@@ -335,18 +335,14 @@ const ReminderList = () => {
                 )}
             </div>
 
-            {/* Add Button */}
+            {/* Add Button - Above Mic, Centered, Simple */}
             <motion.button
                 onClick={handleAdd}
-                className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-primary text-white px-8 py-4 rounded-full font-bold text-xl shadow-premium-lg flex items-center gap-3 z-40"
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                initial={{ y: 100, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                transition={{ delay: 0.3 }}
+                className="fixed bottom-32 inset-x-0 mx-auto w-fit bg-orange-500 hover:bg-orange-600 text-white px-5 py-2.5 rounded-full font-medium shadow-md flex items-center gap-2 z-40"
+                whileTap={{ scale: 0.97 }}
             >
-                <span className="text-2xl">+</span>
-                {t.addNew}
+                <span>+</span>
+                <span>{t.addNew}</span>
             </motion.button>
 
             {/* Reminder Form Modal */}
