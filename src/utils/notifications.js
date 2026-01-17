@@ -125,11 +125,12 @@ export const scheduleReminderNotification = (medicineName, delayMs, language = '
 
 /**
  * Trigger "missed dose" notification after timeout
- * Includes medicine visual description and navigates to Reminder page on click
+ * Deep-links to full-screen AlarmPage on click
  * @param {object} medicine - Medicine object with name, visualDescription, visualColor, id
  * @param {string} language - Language code
+ * @param {string} scheduledTime - ISO timestamp of when reminder was scheduled (for stale detection)
  */
-export const triggerMissedDoseNotification = (medicine, language = 'en-US') => {
+export const triggerMissedDoseNotification = (medicine, language = 'en-US', scheduledTime = null) => {
     // Handle both string (name only) and object (full medicine)
     const medicineName = typeof medicine === 'string' ? medicine : medicine.name;
     const visualDesc = typeof medicine === 'object' 
@@ -138,30 +139,29 @@ export const triggerMissedDoseNotification = (medicine, language = 'en-US') => {
     const medicineId = typeof medicine === 'object' ? medicine.id : null;
 
     const titles = {
-        'en-US': '⚠️ Missed Dose Alert',
-        'hi-IN': '⚠️ दवाई छूट गई',
-        'mr-IN': '⚠️ औषध चुकले'
+        'en-US': '💊 Medicine Time!',
+        'hi-IN': '💊 दवा का समय!',
+        'mr-IN': '💊 औषधाची वेळ!'
     };
 
     const bodies = {
-        'en-US': `You haven't taken ${medicineName} (${visualDesc}) yet. Tap here to mark as taken.`,
-        'hi-IN': `आपने अभी तक ${medicineName} (${visualDesc}) नहीं लिया है। यहाँ टैप करें।`,
-        'mr-IN': `तुम्ही अजून ${medicineName} (${visualDesc}) घेतले नाही. येथे टॅप करा.`
+        'en-US': `Time for ${medicineName} (${visualDesc}). Tap to respond.`,
+        'hi-IN': `${medicineName} (${visualDesc}) लेने का समय। टैप करें।`,
+        'mr-IN': `${medicineName} (${visualDesc}) घेण्याची वेळ. टॅप करा.`
     };
 
     return triggerBrowserNotification(
         titles[language] || titles['en-US'],
         bodies[language] || bodies['en-US'],
         { 
-            tag: `missed-${medicineName}`,
+            tag: `alarm-${medicineName}`,
             requireInteraction: true,
             onClick: () => {
-                // Navigate to Reminder page with medicine ID
-                if (medicineId) {
-                    window.location.href = `/reminder?id=${medicineId}`;
-                } else {
-                    window.location.href = '/reminder';
-                }
+                // Deep-link to full-screen AlarmPage
+                const alarmUrl = medicineId 
+                    ? `/alarm/${medicineId}${scheduledTime ? `?scheduled=${encodeURIComponent(scheduledTime)}` : ''}`
+                    : '/alarm/default';
+                window.location.href = alarmUrl;
             }
         }
     );

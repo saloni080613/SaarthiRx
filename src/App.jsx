@@ -15,6 +15,7 @@ import PrescriptionView from './pages/PrescriptionView';
 import ReminderList from './pages/ReminderList';
 import ReminderAlert from './pages/ReminderAlert';
 import MyMedicines from './pages/MyMedicines';
+import AlarmPage from './pages/AlarmPage';
 import DevTools from './components/DevTools';
 
 
@@ -44,18 +45,29 @@ function AnimatedRoutes() {
 }
 
 function App() {
+  const location = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isAlarmPage = location.startsWith('/alarm');
 
   return (
     <AppProvider>
       <VoiceProvider>
         <VoiceButlerProvider>
           <Router>
-            <PremiumLayout>
-              <VoiceNavigation>
-                <AnimatedRoutes />
-                {/* <DevTools /> */}
-              </VoiceNavigation>
-            </PremiumLayout>
+            {/* Alarm Page - Standalone (no layout wrapper) */}
+            {isAlarmPage ? (
+              <Routes>
+                <Route path="/alarm/:id" element={<AlarmPage />} />
+                <Route path="/alarm" element={<AlarmPage />} />
+              </Routes>
+            ) : (
+              /* Regular pages with PremiumLayout */
+              <PremiumLayout>
+                <VoiceNavigation>
+                  <AnimatedRoutes />
+                  {/* <DevTools /> */}
+                </VoiceNavigation>
+              </PremiumLayout>
+            )}
           </Router>
         </VoiceButlerProvider>
       </VoiceProvider>

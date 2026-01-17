@@ -118,6 +118,25 @@ export const AppProvider = ({ children }) => {
         localStorage.removeItem('saarthi_medicines');
     };
 
+    // Update a specific medicine (e.g., decrement quantity)
+    const updateMedicine = (medicineId, updates) => {
+        const updated = savedMedicines.map(med => 
+            med.id === medicineId ? { ...med, ...updates } : med
+        );
+        setSavedMedicines(updated);
+        localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
+        return updated.find(m => m.id === medicineId);
+    };
+
+    // Decrement medicine quantity by 1 (for "Taken" action)
+    const decrementMedicineQuantity = (medicineId) => {
+        const medicine = savedMedicines.find(m => m.id === medicineId);
+        if (medicine && medicine.quantity > 0) {
+            return updateMedicine(medicineId, { quantity: medicine.quantity - 1 });
+        }
+        return medicine;
+    };
+
     const value = {
         language,
         setLanguage,
@@ -134,6 +153,8 @@ export const AppProvider = ({ children }) => {
         addMedicine,
         getMedicines,
         clearMedicines,
+        updateMedicine,
+        decrementMedicineQuantity,
     };
 
     return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

@@ -245,7 +245,7 @@ const MyMedicines = () => {
 
     return (
         <motion.div
-            className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white pb-32"
+            className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white pb-32 max-w-lg mx-auto"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
