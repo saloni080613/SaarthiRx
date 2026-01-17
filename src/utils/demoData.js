@@ -186,10 +186,172 @@ export function clearDemoData() {
     setTimeout(() => window.location.reload(), 1000);
 }
 
+// Demo prescription data for showcasing to judges
+const DEMO_PRESCRIPTION = {
+    id: 'demo-prescription-1',
+    patientName: 'Mr. Ramesh Kumar',
+    doctorName: 'Dr. Sanjay Mehta',
+    hospital: 'City Care Hospital',
+    date: new Date().toLocaleDateString('en-IN'),
+    diagnosis: 'Type 2 Diabetes with Hypertension',
+    imageUrl: null, // No actual image needed for demo
+    medicines: [
+        {
+            id: 'rx-med-1',
+            name: 'Metformin',
+            genericName: 'Metformin Hydrochloride',
+            dosage: '500mg',
+            timing: ['morning', 'night'],
+            frequency: 'Twice daily',
+            durationDays: 30,
+            withFood: true,
+            visualType: 'Tablet',
+            visualColor: 'white',
+            visualDescription: 'Oval white tablet with "MET 500" marking',
+            specialInstructions: 'Take with meals to reduce stomach upset. Do not crush.',
+            quantity: 60,
+            sideEffects: 'May cause mild nausea initially',
+            warnings: 'Avoid alcohol while taking this medicine'
+        },
+        {
+            id: 'rx-med-2',
+            name: 'Amlodipine',
+            genericName: 'Amlodipine Besylate',
+            dosage: '5mg',
+            timing: ['morning'],
+            frequency: 'Once daily',
+            durationDays: 30,
+            withFood: false,
+            visualType: 'Tablet',
+            visualColor: 'white',
+            visualDescription: 'Small round white tablet',
+            specialInstructions: 'Take at the same time every day for best results',
+            quantity: 30,
+            sideEffects: 'May cause mild swelling in feet',
+            warnings: 'Do not stop suddenly without consulting doctor'
+        },
+        {
+            id: 'rx-med-3',
+            name: 'Atorvastatin',
+            genericName: 'Atorvastatin Calcium',
+            dosage: '10mg',
+            timing: ['night'],
+            frequency: 'Once daily at bedtime',
+            durationDays: 30,
+            withFood: false,
+            visualType: 'Tablet',
+            visualColor: 'pink',
+            visualDescription: 'Small pink oval tablet',
+            specialInstructions: 'Take at bedtime for best effect on cholesterol',
+            quantity: 30,
+            sideEffects: 'Report any muscle pain immediately',
+            warnings: 'Avoid grapefruit juice'
+        },
+        {
+            id: 'rx-med-4',
+            name: 'Aspirin',
+            genericName: 'Acetylsalicylic Acid',
+            dosage: '75mg',
+            timing: ['morning'],
+            frequency: 'Once daily',
+            durationDays: 30,
+            withFood: true,
+            visualType: 'Tablet',
+            visualColor: 'yellow',
+            visualDescription: 'Small yellow coated tablet',
+            specialInstructions: 'Take after breakfast. Blood thinner for heart protection.',
+            quantity: 30,
+            sideEffects: 'May cause stomach irritation',
+            warnings: 'Stop 5 days before any surgery'
+        }
+    ],
+    summary: {
+        'en-US': 'You have 4 medicines to take. Metformin twice daily with meals, Amlodipine once in the morning, Atorvastatin at bedtime, and Aspirin after breakfast.',
+        'hi-IN': 'आपको 4 दवाइयां लेनी हैं। मेटफॉर्मिन दिन में दो बार खाने के साथ, एम्लोडिपिन सुबह एक बार, एटोरवास्टेटिन सोने से पहले, और एस्पिरिन नाश्ते के बाद।'
+    }
+};
+
+/**
+ * Load demo prescription and navigate to view it
+ * Perfect for showcasing to judges how the app works
+ */
+export function loadDemoPrescription() {
+    // Store the demo prescription
+    const prescriptions = JSON.parse(localStorage.getItem('saarthi_prescriptions') || '[]');
+    
+    // Remove any existing demo prescription
+    const filtered = prescriptions.filter(p => p.id !== DEMO_PRESCRIPTION.id);
+    filtered.unshift({ ...DEMO_PRESCRIPTION, scannedAt: Date.now() });
+    
+    localStorage.setItem('saarthi_prescriptions', JSON.stringify(filtered));
+    
+    // Also add the medicines from prescription to medicines list
+    const medicines = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+    const existingIds = new Set(medicines.map(m => m.id));
+    
+    const newMedicines = DEMO_PRESCRIPTION.medicines
+        .filter(m => !existingIds.has(m.id))
+        .map(m => ({
+            ...m,
+            addedAt: Date.now(),
+            prescriptionDate: new Date().toISOString(),
+            prescriptionId: DEMO_PRESCRIPTION.id
+        }));
+    
+    localStorage.setItem('saarthi_medicines', JSON.stringify([...newMedicines, ...medicines]));
+    
+    console.log('✅ Demo prescription loaded!');
+    console.log(`   📋 Prescription: ${DEMO_PRESCRIPTION.diagnosis}`);
+    console.log(`   💊 ${DEMO_PRESCRIPTION.medicines.length} medicines added`);
+    console.log('   🔄 Navigating to dashboard...');
+    
+    // Navigate to dashboard to show the prescription
+    setTimeout(() => {
+        window.location.href = '/dashboard';
+    }, 500);
+    
+    return DEMO_PRESCRIPTION;
+}
+
+/**
+ * Start a simulated AI scan experience for demos
+ * Shows the full scanning flow: preview → analyzing animation → results with voice summary
+ * Perfect for showing judges how the AI works without using API quota
+ */
+export function startDemoScan() {
+    console.log('🎬 Starting demo scan experience...');
+    console.log('   📋 Will simulate AI prescription analysis');
+    console.log('   🔊 Voice summary will play after "analysis"');
+    
+    // Navigate to scan page with demo mode flag
+    window.location.href = '/scan?demo=true';
+    
+    return true;
+}
+
+/**
+ * Get demo prescription data (for use by ScanPrescription page)
+ */
+export function getDemoPrescriptionData() {
+    return DEMO_PRESCRIPTION;
+}
+
 // Make available globally for console access
 if (typeof window !== 'undefined') {
     window.loadDemoData = loadDemoData;
     window.clearDemoData = clearDemoData;
+    window.loadDemoPrescription = loadDemoPrescription;
+    window.startDemoScan = startDemoScan;
+    window.getDemoPrescriptionData = getDemoPrescriptionData;
 }
 
-export default { loadDemoData, clearDemoData, DEMO_MEDICINES, DEMO_REMINDERS };
+export default { 
+    loadDemoData, 
+    clearDemoData, 
+    loadDemoPrescription, 
+    startDemoScan,
+    getDemoPrescriptionData,
+    DEMO_MEDICINES, 
+    DEMO_REMINDERS, 
+    DEMO_PRESCRIPTION 
+};

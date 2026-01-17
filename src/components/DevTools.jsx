@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { loadDemoData, clearDemoData } from '../utils/demoData';
+import { loadDemoData, clearDemoData, loadDemoPrescription, startDemoScan } from '../utils/demoData';
 import { testNotification } from '../utils/notifications';
 
 const DevTools = () => {
     const [isOpen, setIsOpen] = useState(false);
     
-    // Only show in development
-    if (!import.meta.env.DEV) return null;
+    // Show in development OR when explicitly enabled via env variable
+    // To enable in production: set VITE_SHOW_DEVTOOLS=true in Vercel environment variables
+    const showDevTools = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEVTOOLS === 'true';
+    if (!showDevTools) return null;
 
     return (
         <div className="fixed bottom-4 left-4 z-50 font-sans">
@@ -25,6 +27,14 @@ const DevTools = () => {
                         </div>
                         
                         <div className="space-y-2">
+                            {/* Demo AI Scan - Shows full AI experience for judges */}
+                            <button
+                                onClick={() => startDemoScan()}
+                                className="w-full py-2.5 px-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2 shadow-lg"
+                            >
+                                🤖 Demo AI Scan
+                            </button>
+
                             <button
                                 onClick={() => loadDemoData()}
                                 className="w-full py-2 px-3 bg-blue-600 hover:bg-blue-500 rounded-lg text-xs font-bold transition-colors flex items-center justify-center gap-2"
