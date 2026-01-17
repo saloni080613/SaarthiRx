@@ -59,10 +59,10 @@ const Dashboard = () => {
     // Voice command: "Add Reminder" → navigate to /reminder
     useEffect(() => {
         if (!transcript) return;
-        
+
         const cmd = transcript.toLowerCase();
         const addReminderPatterns = ['add reminder', 'new reminder', 'रिमाइंडर जोड़ें', 'नवीन रिमाइंडर', 'रिमाइंडर'];
-        
+
         if (addReminderPatterns.some(p => cmd.includes(p))) {
             resetTranscript();
             triggerAction();
@@ -95,6 +95,15 @@ const Dashboard = () => {
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ delay: 0.1 }}
             >
+                {/* Logo */}
+                <motion.img
+                    src="/logo.png"
+                    alt="SaarthiRx Logo"
+                    className="w-20 h-20 mx-auto mb-4 rounded-2xl shadow-lg"
+                    initial={{ scale: 0, rotate: -180 }}
+                    animate={{ scale: 1, rotate: 0 }}
+                    transition={{ type: "spring", stiffness: 200 }}
+                />
                 <h1 className="text-4xl md:text-5xl font-display font-bold text-gray-800 mb-2">
                     {greeting}
                 </h1>
