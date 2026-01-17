@@ -64,7 +64,7 @@ function App() {
               <PremiumLayout>
                 <VoiceNavigation>
                   <AnimatedRoutes />
-                  {/* <DevTools /> */}
+                  <DevTools />
                 </VoiceNavigation>
               </PremiumLayout>
             )}
