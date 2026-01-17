@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SaarthiRx - Architecture Diagrams</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 40px;
+      }
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      h1 {
+        text-align: center;
+        color: white;
+        font-size: 3rem;
+        margin-bottom: 40px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+      .diagram-card {
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        margin-bottom: 40px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      .diagram-title {
+        font-size: 1.5rem;
+        color: #333;
+        margin-bottom: 20px;
+        padding-bottom: 10px;
+        border-bottom: 3px solid #667eea;
+      }
+      .mermaid {
+        display: flex;
+        justify-content: center;
+        padding: 20px;
+      }
+      .tech-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+      }
+      .tech-table th,
+      .tech-table td {
+        padding: 15px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+      }
+      .tech-table th {
+        background: #667eea;
+        color: white;
+      }
+      .tech-table tr:hover {
+        background: #f5f5f5;
+      }
+      .badge {
+        display: inline-block;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: bold;
+      }
+      .badge-blue {
+        background: #e3f2fd;
+        color: #1976d2;
+      }
+      .badge-green {
+        background: #e8f5e9;
+        color: #388e3c;
+      }
+      .badge-purple {
+        background: #f3e5f5;
+        color: #7b1fa2;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🏥 SaarthiRx Architecture</h1>
+
+      <!-- System Architecture -->
+      <div class="diagram-card">
+        <h2 class="diagram-title">🏗️ System Architecture</h2>
+        <div class="mermaid">
+          graph TB subgraph Frontend["📱 Frontend (React + Vite)"] UI["🖥️ User
+          Interface"] Voice["🗣️ Voice Butler"] Context["📦 App Context"] end
+          subgraph External["☁️ External Services"] Firebase[("🔐 Firebase
+          Auth")] Gemini["🤖 Gemini AI"] WebNotif["🔔 Web Notifications"] end
+          subgraph Storage["💾 Local Storage"] Meds[("💊 Medicines")]
+          Reminders[("⏰ Reminders")] History[("📜 History")] end UI --> Voice
+          UI --> Context Context --> Meds Context --> Reminders Context -->
+          History UI --> Firebase UI --> Gemini Context --> WebNotif
+        </div>
+      </div>
+
+      <!-- User Journey -->
+      <div class="diagram-card">
+        <h2 class="diagram-title">👤 User Journey Flow</h2>
+        <div class="mermaid">
+          flowchart LR A["🏠 Welcome"] --> B["📱 Login"] B --> C["🗣️ Voice
+          Setup"] C --> D["📋 Dashboard"] D --> E["📷 Scan"] D --> F["💊
+          Medicines"] D --> G["⏰ Reminders"] E --> H["🤖 AI Analysis"] H -->
+          I["✅ Auto-Save"] I --> F I --> G
+        </div>
+      </div>
+
+      <!-- Prescription Scanning -->
+      <div class="diagram-card">
+        <h2 class="diagram-title">📷 Prescription Scanning Flow</h2>
+        <div class="mermaid">
+          sequenceDiagram participant U as 👤 User participant C as 📷 Camera
+          participant G as 🤖 Gemini AI participant S as 💾 Storage U->>C:
+          Capture Prescription C->>G: Send Image G->>G: Extract Medicine Info
+          G-->>U: Show Parsed Data U->>S: Confirm & Save S->>S: Create Reminders
+          S-->>U: ✅ Success!
+        </div>
+      </div>
+
+      <!-- Alarm Flow -->
+      <div class="diagram-card">
+        <h2 class="diagram-title">🔔 Notification & Alarm Flow</h2>
+        <div class="mermaid">
+          flowchart TD A["⏰ Reminder Time"] --> B["🔔 Notification"] B -->
+          C{"User Taps?"} C -->|Yes| D["📱 Full-Screen Alarm"] C -->|No| E["60s
+          Wait"] E --> F["⚠️ Missed Dose"] D --> G{"Action?"} G -->|"✅ Taken"|
+          H["Decrement Stock"] G -->|"❌ Skip"| I["Log Skipped"] G -->|"⏰
+          Snooze"| J{"Count < 3?"} J -->|Yes| K["+15 min"] J -->|No| L["❌ Force
+          Skip"] H --> M["🏠 Dashboard"] I --> M K --> B L --> M
+        </div>
+      </div>
+
+      <!-- Voice Commands -->
+      <div class="diagram-card">
+        <h2 class="diagram-title">🗣️ Voice Command Flow</h2>
+        <div class="mermaid">
+          flowchart LR A["🎙️ Tap Mic"] --> B["Speech Recognition"] B -->
+          C{"Parse Intent"} C -->|"Scan"| D["📷 Camera"] C -->|"Medicines"|
+          E["💊 List"] C -->|"Reminders"| F["⏰ Alarms"] C -->|"Taken"| G["✅
+          Mark"] C -->|"Snooze"| H["⏰ +15min"]
+        </div>
+      </div>
+
+      <!-- Tech Stack Table -->
+      <div class="diagram-card">
+        <h2 class="diagram-title">📊 Tech Stack</h2>
+        <table class="tech-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>Technology</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>🗣️ Voice First</td>
+              <td><span class="badge badge-blue">Web Speech API</span></td>
+              <td>Elderly accessibility</td>
+            </tr>
+            <tr>
+              <td>📷 AI Scan</td>
+              <td><span class="badge badge-purple">Gemini 2.0 Flash</span></td>
+              <td>Prescription extraction</td>
+            </tr>
+            <tr>
+              <td>🔔 Alarms</td>
+              <td><span class="badge badge-blue">Web Notifications</span></td>
+              <td>Medication reminders</td>
+            </tr>
+            <tr>
+              <td>📱 Frontend</td>
+              <td><span class="badge badge-green">React + Vite</span></td>
+              <td>Fast, modern UI</td>
+            </tr>
+            <tr>
+              <td>🔐 Auth</td>
+              <td><span class="badge badge-purple">Firebase</span></td>
+              <td>Phone OTP login</td>
+            </tr>
+            <tr>
+              <td>🌐 Languages</td>
+              <td><span class="badge badge-green">EN / HI / MR</span></td>
+              <td>Multilingual support</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <script>
+      mermaid.initialize({
+        startOnLoad: true,
+        theme: "base",
+        themeVariables: {
+          primaryColor: "#667eea",
+          primaryTextColor: "#fff",
+          primaryBorderColor: "#5a67d8",
+          lineColor: "#667eea",
+          secondaryColor: "#f0f4ff",
+          tertiaryColor: "#fff",
+        },
+      });
+    </script>
+  </body>
+</html>
