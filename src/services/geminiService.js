@@ -96,12 +96,12 @@ const DEFAULT_TIMES = {
  * @returns {Promise<object>} Extracted medicine data with parsed frequencies
  */
 export const analyzePrescription = async (base64Image, mimeType = 'image/jpeg') => {
-    // Models to try in order of preference (updated Jan 2025)
+    // Models to try in order of preference (January 2026)
+    // Each model has its own quota pool, so we try multiple
     const MODELS_TO_TRY = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash-exp',
-        'gemini-2.5-pro',
-        'gemini-1.5-flash',
+        'gemini-2.5-flash',           // Primary - stable since June 2025
+        'gemini-1.5-flash',           // Fallback - separate quota pool
+        'gemini-1.5-pro',             // Pro fallback - separate quota pool
     ];
 
     // Strict extraction prompt with explicit JSON schema
@@ -240,7 +240,7 @@ CRITICAL RULES:
 export const analyzeMedicinePhoto = async (base64Image, mimeType = 'image/jpeg', expectedMedicine = null) => {
     const MODELS_TO_TRY = [
         'gemini-2.5-flash',
-        'gemini-2.0-flash-exp',
+        'gemini-2.0-flash',
     ];
 
     const prompt = `You are analyzing a photo of medicine (tablet, capsule, syrup, or packaging).

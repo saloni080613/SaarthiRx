@@ -34,21 +34,11 @@ const Welcome = () => {
             confirmationMessage: 'आपने हिंदी चुनी है।',
             gradient: 'from-orange-500 to-orange-700',
             voiceKeywords: ['hindi', 'हिंदी', 'हिन्दी']
-        },
-        {
-            code: 'mr-IN',
-            label: 'Marathi',           // English label for page
-            buttonText: 'मराठी',         // Native text on button
-            flag: '🇮🇳',
-            subtitle: 'मराठीत सुरू ठेवा',
-            confirmationMessage: 'तुम्ही मराठी निवडली आहे।',
-            gradient: 'from-green-500 to-green-700',
-            voiceKeywords: ['marathi', 'मराठी']
         }
     ];
 
     useEffect(() => {
-        const content = 'Choose your language: English, Hindi, or Marathi.';
+        const content = 'Choose your language: English or Hindi.';
         setCurrentPageContent(content);
         // Silent welcome - no TTS on page load
     }, [setCurrentPageContent, announcePageAndAction]);
@@ -138,15 +128,15 @@ const Welcome = () => {
                 </motion.p>
             </div>
 
-            {/* Language Cards */}
+            {/* Language Cards - Optimized for 2 languages */}
             <motion.div
-                className="w-full max-w-sm sm:max-w-md space-y-3"
+                className="w-full max-w-sm sm:max-w-md space-y-4 mt-4"
                 variants={staggerContainer}
                 initial="initial"
                 animate="animate"
             >
                 <motion.p
-                    className="text-sm sm:text-base text-center text-gray-500 mb-3"
+                    className="text-base sm:text-lg text-center text-gray-500 mb-4 font-medium"
                     variants={staggerItem}
                 >
                     Select Your Preferred Language
@@ -157,35 +147,40 @@ const Welcome = () => {
                         key={lang.code}
                         onClick={() => handleLanguageSelect(lang.code, lang.label, lang.confirmationMessage)}
                         className={`
-                            w-full min-h-[60px] sm:min-h-[70px] p-3 sm:p-4 rounded-2xl
+                            w-full min-h-[90px] sm:min-h-[100px] p-4 sm:p-5 rounded-3xl
                             bg-gradient-to-br ${lang.gradient}
                             text-white
-                            shadow-premium
-                            flex items-center space-x-3 sm:space-x-4
+                            shadow-xl hover:shadow-2xl
+                            flex items-center space-x-4 sm:space-x-5
                             overflow-hidden relative
+                            transform transition-all duration-300
                         `}
                         variants={{
                             ...cardHover,
                             ...staggerItem
                         }}
                         initial="rest"
-                        whileHover="hover"
-                        whileTap="tap"
+                        whileHover={{ scale: 1.02, y: -2 }}
+                        whileTap={{ scale: 0.98 }}
                         custom={index}
                     >
-                        {/* Flag Icon */}
-                        <div className="text-3xl sm:text-4xl flex-shrink-0">{lang.flag}</div>
+                        {/* Flag Icon - Larger */}
+                        <div className="w-16 h-16 sm:w-18 sm:h-18 bg-white/20 rounded-2xl flex items-center justify-center flex-shrink-0">
+                            <span className="text-4xl sm:text-5xl">{lang.flag}</span>
+                        </div>
 
                         {/* Language Info */}
                         <div className="flex-1 text-left">
-                            <div className="text-lg sm:text-xl md:text-2xl font-bold">{lang.buttonText}</div>
-                            <div className="text-xs sm:text-sm md:text-base opacity-90">{lang.subtitle}</div>
+                            <div className="text-2xl sm:text-3xl font-bold mb-1">{lang.buttonText}</div>
+                            <div className="text-sm sm:text-base opacity-90">{lang.subtitle}</div>
                         </div>
 
-                        {/* Chevron */}
-                        <svg className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-                        </svg>
+                        {/* Arrow Icon */}
+                        <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
+                            <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                            </svg>
+                        </div>
 
                         {/* Shine Effect */}
                         <motion.div
@@ -196,6 +191,18 @@ const Welcome = () => {
                         />
                     </motion.button>
                 ))}
+
+                {/* Voice Hint */}
+                <motion.div 
+                    className="flex items-center justify-center gap-2 mt-6 text-gray-400"
+                    variants={staggerItem}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.8 }}
+                >
+                    <span className="text-xl">🎙️</span>
+                    <span className="text-sm">Or tap the mic and say your language</span>
+                </motion.div>
             </motion.div>
 
             {/* Dark Overlay + Listening Modal */}
@@ -244,7 +251,7 @@ const Welcome = () => {
                         {/* Language Options */}
                         <div className="bg-white/10 backdrop-blur-md px-6 sm:px-8 py-4 rounded-2xl border border-white/20">
                             <p className="text-lg sm:text-xl text-white font-medium text-center">
-                                Say: <span className="text-blue-300">English</span>, <span className="text-orange-300">हिंदी</span>, or <span className="text-green-300">मराठी</span>
+                                Say: <span className="text-blue-300">English</span> or <span className="text-orange-300">हिंदी</span>
                             </p>
                         </div>
                     </motion.div>

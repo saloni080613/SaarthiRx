@@ -15,7 +15,7 @@ const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
  * @returns {Promise<object>} Parsed medicine object
  */
 export const parseMedicineFromVoice = async (voiceInput, language = 'en-US') => {
-    const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash-exp'];
+    const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
 
     const prompt = `You are a medical assistant for elderly patients. Parse the following voice input about a medicine.
 

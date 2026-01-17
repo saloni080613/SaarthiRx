@@ -62,7 +62,7 @@ export const VoiceProvider = ({ children }) => {
                 // Auto-stop detection: Reset timer on every result (speech detected)
                 if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-                // 1.5 seconds of silence after speech → auto-stop mic (elder-friendly)
+                // 1 second of silence after speech → auto-stop mic (faster response)
                 silenceTimerRef.current = setTimeout(() => {
                     console.log('🤫 Silence detected, auto-stopping mic...');
                     triggerHaptic([50, 50]); // Success chime haptic
@@ -71,7 +71,7 @@ export const VoiceProvider = ({ children }) => {
                             recognitionRef.current.stop();
                         } catch (e) { }
                     }
-                }, 1500);
+                }, 1000);
             };
 
             recognition.onerror = (event) => {

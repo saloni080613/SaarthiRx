@@ -5,7 +5,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { useVoice } from '../context/VoiceContext';
@@ -18,6 +18,7 @@ import { getPrompt } from '../utils/translations';
 import GlobalActionButton from '../components/GlobalActionButton';
 import VoiceNegotiation from '../components/VoiceNegotiation';
 import MedicineVerifier from '../components/MedicineVerifier';
+import { getDemoPrescriptionData } from '../utils/demoData';
 
 // Scan states
 const SCAN_STATES = {
@@ -32,8 +33,12 @@ const SCAN_STATES = {
 
 const ScanPrescription = () => {
     const navigate = useNavigate();
+    const location = useLocation();
     const { language, user } = useApp();
     const { speak, transcript, resetTranscript } = useVoice();
+    
+    // Check for demo mode from URL param
+    const isDemoMode = new URLSearchParams(location.search).get('demo') === 'true';
 
     const [scanState, setScanState] = useState(SCAN_STATES.IDLE);
     const [previewUrl, setPreviewUrl] = useState(null);
@@ -133,6 +138,53 @@ const ScanPrescription = () => {
             }
         };
     }, [previewUrl]);
+
+    // Demo Mode: Simulate AI scanning experience for judges
+    useEffect(() => {
+        if (!isDemoMode) return;
+        
+        console.log('🎬 Demo mode activated - simulating AI scan...');
+        
+        // Get demo prescription data
+        const demoData = getDemoPrescriptionData();
+        
+        // Step 1: Show "analyzing" state with animation
+        setScanState(SCAN_STATES.ANALYZING);
+        speak(getText('analyzing'));
+        
+        // Step 2: After 3 seconds, show results
+        const resultsTimer = setTimeout(async () => {
+            // Build the analysis result in the same format as real API
+            const simulatedResult = {
+                medicines: demoData.medicines.map(m => ({
+                    ...m,
+                    timesPerDay: m.timing.length,
+                    reminderTimes: m.timing.map(t => 
+                        t === 'morning' ? '08:00' : 
+                        t === 'afternoon' ? '14:00' : 
+                        t === 'night' ? '21:00' : '08:00'
+                    ),
+                    durationWasGuessed: false
+                })),
+                doctorName: demoData.doctorName,
+                date: demoData.date
+            };
+            
+            setAnalysisResult(simulatedResult);
+            setScanState(SCAN_STATES.RESULTS);
+            triggerSuccess();
+            
+            // Generate and speak the voice summary
+            const summary = generateVoiceSummary(simulatedResult.medicines, language);
+            await speak(summary);
+            
+            // Auto-commit the medicines and reminders (same as real flow)
+            await autoCommitMedicinesAndReminders(simulatedResult);
+            
+        }, 3000); // 3 second "analyzing" animation
+        
+        return () => clearTimeout(resultsTimer);
+    }, [isDemoMode, language]);
 
     // Voice command detection for camera control
     useEffect(() => {
