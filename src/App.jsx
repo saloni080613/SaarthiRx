@@ -5,6 +5,7 @@ import { VoiceProvider } from './context/VoiceContext';
 import { VoiceButlerProvider } from './context/VoiceButlerContext';
 import PremiumLayout from './components/PremiumLayout';
 import VoiceNavigation from './components/VoiceNavigation';
+import ReminderScheduler from './components/ReminderScheduler';
 import NamasteGateway from './pages/NamasteGateway';
 import Welcome from './pages/Welcome';
 import Login from './pages/Login';
@@ -49,7 +50,9 @@ function App() {
           <Router>
             <PremiumLayout>
               <VoiceNavigation>
-                <AnimatedRoutes />
+                <ReminderScheduler>
+                  <AnimatedRoutes />
+                </ReminderScheduler>
               </VoiceNavigation>
             </PremiumLayout>
           </Router>

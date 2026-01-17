@@ -12,6 +12,11 @@ import {
     formatTime,
     getTimePeriod
 } from '../services/reminderService';
+import {
+    getNotificationStatus,
+    requestNotificationPermission,
+    sendTestNotification
+} from '../services/notificationService';
 import ReminderForm from '../components/ReminderForm';
 import GlobalActionButton from '../components/GlobalActionButton';
 import { triggerAction, triggerSuccess } from '../utils/haptics';
@@ -28,6 +33,7 @@ const ReminderList = () => {
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingReminder, setEditingReminder] = useState(null);
     const [deleteConfirm, setDeleteConfirm] = useState(null);
+    const [notificationStatus, setNotificationStatus] = useState('default');
 
     const hasAnnounced = useRef(false);
 
@@ -76,9 +82,18 @@ const ReminderList = () => {
 
     const t = labels[language] || labels['en-US'];
 
-    // Load reminders
+    // Load reminders function - defined before useEffect that uses it
+    const loadReminders = () => {
+        const data = getReminders();
+        // Sort by time
+        data.sort((a, b) => a.time.localeCompare(b.time));
+        setReminders(data);
+    };
+
+    // Load reminders and check notification status on mount
     useEffect(() => {
         loadReminders();
+        setNotificationStatus(getNotificationStatus());
     }, []);
 
     // Announce page
@@ -87,13 +102,17 @@ const ReminderList = () => {
             hasAnnounced.current = true;
             announce(t.title);
         }
-    }, []);
+    }, [announce, t.title]);
 
-    const loadReminders = () => {
-        const data = getReminders();
-        // Sort by time
-        data.sort((a, b) => a.time.localeCompare(b.time));
-        setReminders(data);
+    // Handle enabling notifications
+    const handleEnableNotifications = async () => {
+        triggerAction();
+        const status = await requestNotificationPermission();
+        setNotificationStatus(status);
+        if (status === 'granted') {
+            triggerSuccess();
+            sendTestNotification();
+        }
     };
 
     // Handle add
@@ -162,6 +181,53 @@ const ReminderList = () => {
                 <h1 className="text-4xl font-display font-bold mb-2">{t.title}</h1>
                 <p className="text-lg text-white/80">{t.subtitle}</p>
             </div>
+
+            {/* Notification Permission Banner */}
+            {notificationStatus === 'default' && (
+                <motion.div
+                    className="mx-6 mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-2xl"
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                >
+                    <div className="flex items-center gap-3">
+                        <span className="text-3xl">🔔</span>
+                        <div className="flex-1">
+                            <p className="font-semibold text-blue-800">Enable Notifications</p>
+                            <p className="text-sm text-blue-600">Get reminded when it's time to take your medicine</p>
+                        </div>
+                        <motion.button
+                            onClick={handleEnableNotifications}
+                            className="px-4 py-2 bg-blue-500 text-white font-semibold rounded-xl"
+                            whileTap={{ scale: 0.95 }}
+                        >
+                            Enable
+                        </motion.button>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Notification Status Indicator */}
+            {notificationStatus === 'granted' && (
+                <div className="mx-6 mt-4 flex items-center gap-2 text-green-600 text-sm">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    Notifications enabled - you'll be reminded automatically
+                </div>
+            )}
+
+            {notificationStatus === 'denied' && (
+                <motion.div
+                    className="mx-6 mt-4 p-4 bg-red-50 border-2 border-red-200 rounded-2xl"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                >
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">⚠️</span>
+                        <p className="text-sm text-red-700">
+                            Notifications are blocked. Please enable them in your browser settings to receive reminders.
+                        </p>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Content */}
             <div className="flex-1 p-6 -mt-4">

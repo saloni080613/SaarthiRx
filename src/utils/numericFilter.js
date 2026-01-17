@@ -5,6 +5,8 @@
  */
 
 // Word to digit mappings for multiple languages
+// Note: Some Hindi and Marathi words are identical (like शून्य, एक, तीन, चार, सात, आठ)
+// We keep unique entries only to avoid duplicate keys
 const WORD_TO_DIGIT = {
     // English
     'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
@@ -14,9 +16,8 @@ const WORD_TO_DIGIT = {
     'शून्य': '0', 'एक': '1', 'दो': '2', 'तीन': '3', 'चार': '4',
     'पांच': '5', 'छह': '6', 'सात': '7', 'आठ': '8', 'नौ': '9',
     'दस': '10', 'ग्यारह': '11', 'बारह': '12',
-    // Marathi  
-    'शून्य': '0', 'एक': '1', 'दोन': '2', 'तीन': '3', 'चार': '4',
-    'पाच': '5', 'सहा': '6', 'सात': '7', 'आठ': '8', 'नऊ': '9',
+    // Marathi (only unique words not in Hindi)
+    'दोन': '2', 'पाच': '5', 'सहा': '6', 'नऊ': '9',
     'दहा': '10', 'अकरा': '11', 'बारा': '12',
 };
 

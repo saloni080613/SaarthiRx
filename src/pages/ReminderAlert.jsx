@@ -90,39 +90,13 @@ const ReminderAlert = () => {
         return messages[language] || messages['en-US'];
     };
 
-    // Start alerts
-    useEffect(() => {
-        if (!reminder || dismissed || snoozed) return;
+    // Utility function to clear intervals
+    const clearIntervals = () => {
+        clearInterval(vibrationInterval.current);
+        clearInterval(voiceInterval.current);
+    };
 
-        // Vibration every 2 seconds
-        vibrationInterval.current = setInterval(() => {
-            triggerAlert();
-        }, 2000);
-
-        // Voice every 10 seconds
-        voiceInterval.current = setInterval(() => {
-            announce(getMessage());
-        }, 10000);
-
-        // Initial announcement
-        announce(getMessage());
-
-        return () => {
-            clearInterval(vibrationInterval.current);
-            clearInterval(voiceInterval.current);
-        };
-    }, [reminder, dismissed, snoozed]);
-
-    // Listen for voice commands
-    useEffect(() => {
-        if (!transcript) return;
-        const lower = transcript.toLowerCase();
-        if (lower.includes('taken') || lower.includes('ले लिया') || lower.includes('घेतली')) {
-            handleTaken();
-        }
-    }, [transcript]);
-
-    // Handle taken
+    // Handle taken - defined before useEffect that uses it
     const handleTaken = () => {
         triggerSuccess();
         setDismissed(true);
@@ -133,7 +107,7 @@ const ReminderAlert = () => {
     };
 
     // Handle snooze
-    const handleSnooze = (minutes) => {
+    const handleSnooze = (_minutes) => {
         triggerSuccess();
         setSnoozed(true);
         setShowSnoozeOptions(false);
@@ -155,10 +129,37 @@ const ReminderAlert = () => {
         }, 500);
     };
 
-    const clearIntervals = () => {
-        clearInterval(vibrationInterval.current);
-        clearInterval(voiceInterval.current);
-    };
+    // Start alerts
+    useEffect(() => {
+        if (!reminder || dismissed || snoozed) return;
+
+        // Vibration every 2 seconds
+        vibrationInterval.current = setInterval(() => {
+            triggerAlert();
+        }, 2000);
+
+        // Voice every 10 seconds
+        voiceInterval.current = setInterval(() => {
+            announce(getMessage());
+        }, 10000);
+
+        // Initial announcement
+        announce(getMessage());
+
+        return () => {
+            clearInterval(vibrationInterval.current);
+            clearInterval(voiceInterval.current);
+        };
+    }, [reminder, dismissed, snoozed, announce, getMessage]);
+
+    // Listen for voice commands
+    useEffect(() => {
+        if (!transcript) return;
+        const lower = transcript.toLowerCase();
+        if (lower.includes('taken') || lower.includes('ले लिया') || lower.includes('घेतली')) {
+            handleTaken();
+        }
+    }, [transcript, handleTaken]);
 
     // Dismissed state
     if (dismissed) {

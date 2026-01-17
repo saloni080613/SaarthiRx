@@ -53,27 +53,7 @@ const Welcome = () => {
         // Silent welcome - no TTS on page load
     }, [setCurrentPageContent, announcePageAndAction]);
 
-    // Listen for voice input and select language
-    useEffect(() => {
-        if (!transcript) return;
-
-        const lowerTranscript = transcript.toLowerCase().trim();
-        console.log('Voice input on Welcome:', lowerTranscript);
-
-        // Check each language for matching keywords
-        for (const lang of languages) {
-            const match = lang.voiceKeywords.some(keyword =>
-                lowerTranscript.includes(keyword.toLowerCase())
-            );
-
-            if (match) {
-                console.log('Language matched:', lang.label);
-                handleLanguageSelect(lang.code, lang.label, lang.confirmationMessage);
-                return;
-            }
-        }
-    }, [transcript]);
-
+    // Handler for language selection - defined before useEffect that uses it
     const handleLanguageSelect = async (langCode, langLabel, confirmationMessage) => {
         triggerSuccess();
         setLanguage(langCode);
@@ -98,6 +78,27 @@ const Welcome = () => {
         // Navigate to register page
         navigate('/register');
     };
+
+    // Listen for voice input and select language
+    useEffect(() => {
+        if (!transcript) return;
+
+        const lowerTranscript = transcript.toLowerCase().trim();
+        console.log('Voice input on Welcome:', lowerTranscript);
+
+        // Check each language for matching keywords
+        for (const lang of languages) {
+            const match = lang.voiceKeywords.some(keyword =>
+                lowerTranscript.includes(keyword.toLowerCase())
+            );
+
+            if (match) {
+                console.log('Language matched:', lang.label);
+                handleLanguageSelect(lang.code, lang.label, lang.confirmationMessage);
+                return;
+            }
+        }
+    }, [transcript, languages, handleLanguageSelect]);
 
     return (
         <motion.div
