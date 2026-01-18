@@ -206,13 +206,16 @@ const Dashboard = () => {
                     className="mt-6 p-5 bg-blue-50 border-2 border-blue-200 rounded-2xl"
                     variants={staggerItem}
                 >
-                    <h3 className="text-lg font-semibold text-blue-800 mb-2">
+                    <h3 className="text-lg font-semibold text-blue-800 mb-3">
                         {getPrompt('DASHBOARD_VOICE_TITLE', language)}
                     </h3>
-                    <div className="space-y-1 text-base text-blue-700">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-base text-blue-700">
                         <p>{getPrompt('DASHBOARD_VOICE_SCAN', language)}</p>
+                        <p>{getPrompt('DASHBOARD_VOICE_MEDICINES', language)}</p>
+                        <p>{getPrompt('DASHBOARD_VOICE_REMINDERS', language)}</p>
                         <p>{getPrompt('DASHBOARD_VOICE_HOME', language)}</p>
                         <p>{getPrompt('DASHBOARD_VOICE_REPEAT', language)}</p>
+                        <p>{getPrompt('DASHBOARD_VOICE_HELP', language)}</p>
                     </div>
                 </motion.div>
             </motion.div>

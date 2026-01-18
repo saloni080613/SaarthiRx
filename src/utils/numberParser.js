@@ -73,6 +73,56 @@ const TRANSLITERATED_ENGLISH = {
 };
 
 /**
+ * Sanitize voice input based on field type (strict typing)
+ * @param {string} text - Raw transcript
+ * @param {string} inputType - 'tel', 'name', 'text'
+ * @param {string} language - Language code
+ * @returns {string} Sanitized text
+ */
+export const sanitizeVoiceInput = (text, inputType, language = 'en-US') => {
+    if (!text) return '';
+    
+    if (inputType === 'tel') {
+        // Convert spoken words to digits using parseSpokenPhone, then strip non-numeric
+        const allNumberWords = {
+            ...ENGLISH_NUMBERS,
+            ...TRANSLITERATED_ENGLISH,
+            ...HINDI_NUMBERS,
+            ...MARATHI_NUMBERS
+        };
+        
+        let cleanText = text.trim().toLowerCase();
+        const words = cleanText.split(/[\s,।॥\-]+/);
+        let result = '';
+        
+        for (const word of words) {
+            if (!word) continue;
+            // Check if word is digits
+            if (/^\d+$/.test(word)) {
+                result += word;
+                continue;
+            }
+            // Check number dictionaries
+            const foundNumber = allNumberWords[word];
+            if (foundNumber !== undefined) {
+                result += String(foundNumber);
+            }
+        }
+        
+        // Final cleanup: only digits
+        const digitsOnly = result.replace(/[^0-9]/g, '');
+        return digitsOnly;
+    }
+    
+    if (inputType === 'name') {
+        // Strip numbers and special characters, keep letters and spaces (including Devanagari)
+        return text.replace(/[0-9!@#$%^&*()_+=\[\]{};':"\\|,.<>\/?~`]/g, '').trim();
+    }
+    
+    return text; // 'text' type returns as-is
+};
+
+/**
  * Parse spoken number from any language to digits
  * Handles: "six five" -> "65", "छह पांच" -> "65", "सहा पाच" -> "65"
  * @param {string} text - Spoken text containing numbers

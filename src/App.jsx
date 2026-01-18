@@ -51,9 +51,9 @@ function App() {
 
   return (
     <AppProvider>
-      <VoiceProvider>
-        <VoiceButlerProvider>
-          <Router>
+      <Router>
+        <VoiceProvider>
+          <VoiceButlerProvider>
             {/* Alarm Page - Standalone (no layout wrapper) */}
             {isAlarmPage ? (
               <Routes>
@@ -71,9 +71,9 @@ function App() {
                 </VoiceNavigation>
               </PremiumLayout>
             )}
-          </Router>
-        </VoiceButlerProvider>
-      </VoiceProvider>
+          </VoiceButlerProvider>
+        </VoiceProvider>
+      </Router>
     </AppProvider>
   );
 }
