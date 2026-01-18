@@ -10,7 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { useVoice } from '../context/VoiceContext';
 import { useVoiceButler } from '../context/VoiceButlerContext';
-import { analyzeMedicinePhoto } from '../services/geminiService';
+import { verifyMedicinePhoto } from '../services/geminiService';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { compressImage, createPreviewUrl } from '../utils/imageUtils';
 import DualActionButtons from '../components/DualActionButtons';
@@ -25,6 +25,10 @@ const MyMedicines = () => {
     const [showCamera, setShowCamera] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [selectedMedicine, setSelectedMedicine] = useState(null);
+    
+    // Blind Verification State
+    const [verificationResult, setVerificationResult] = useState(null);
+    const [showVerificationModal, setShowVerificationModal] = useState(false);
     
     const fileInputRef = useRef(null);
     const videoRef = useRef(null);
@@ -44,9 +48,12 @@ const MyMedicines = () => {
             expires: 'Expires',
             details: 'View Details',
             camera: 'Take Photo',
-            analyzing: 'Checking medicine...',
-            notInPrescription: 'This medicine is not in your prescription.',
-            added: 'Medicine added!',
+            analyzing: 'Show me the medicine. I will tell you if it matches.',
+            blurryImage: 'I cannot read the name clearly. Please hold the medicine steady and try again.',
+            notInPrescription: 'Warning: I do not see this medicine in your prescription. Please check with your doctor.',
+            matchFound: 'Yes! This medicine matches your prescription.',
+            added: 'Medicine verified and saved!',
+            verifying: 'Reading medicine name...',
             back: 'Back',
             howItLooks: 'How it looks',
             whenToTake: 'When to Take',
@@ -56,7 +63,8 @@ const MyMedicines = () => {
             takeOnEmptyStomach: 'Take on empty stomach',
             goBack: '← Go Back',
             repeatInstructions: 'Repeat Instructions',
-            tryAgain: 'Could not identify medicine. Please try again with a clearer photo.'
+            tryAgain: 'Could not identify medicine. Please try again with a clearer photo.',
+            timeoutError: 'Taking too long. Check internet and try again.'
         },
         'hi-IN': {
             title: 'मेरी दवाइयां',
@@ -69,9 +77,12 @@ const MyMedicines = () => {
             expires: 'समाप्ति',
             details: 'विवरण देखें',
             camera: 'फोटो लें',
-            analyzing: 'दवाई जांच रहा हूँ...',
-            notInPrescription: 'यह दवाई आपके पर्चे में नहीं है।',
-            added: 'दवाई जोड़ी गई!',
+            analyzing: 'मुझे दवाई दिखाएं। मैं बताऊंगा यह मेल खाती है या नहीं।',
+            blurryImage: 'मैं नाम स्पष्ट रूप से नहीं पढ़ पा रहा। कृपया दवाई स्थिर रखें और फिर कोशिश करें।',
+            notInPrescription: 'चेतावनी: यह दवाई आपके पर्चे में नहीं है। कृपया अपने डॉक्टर से जांच करें।',
+            matchFound: 'हाँ! यह दवाई आपके पर्चे से मेल खाती है।',
+            added: 'दवाई सत्यापित और सहेजी गई!',
+            verifying: 'दवाई का नाम पढ़ रहा हूँ...',
             back: 'वापस',
             howItLooks: 'कैसी दिखती है',
             whenToTake: 'कब लेना है',
@@ -81,7 +92,8 @@ const MyMedicines = () => {
             takeOnEmptyStomach: 'खाली पेट लें',
             goBack: '← वापस जाएं',
             repeatInstructions: 'निर्देश दोहराएं',
-            tryAgain: 'दवाई पहचान नहीं सकी। कृपया स्पष्ट फोटो से पुनः प्रयास करें।'
+            tryAgain: 'दवाई पहचान नहीं सकी। कृपया स्पष्ट फोटो से पुनः प्रयास करें।',
+            timeoutError: 'बहुत समय लग रहा है। इंटरनेट जांचें और फिर प्रयास करें।'
         },
         'mr-IN': {
             title: 'माझी औषधे',
@@ -106,7 +118,8 @@ const MyMedicines = () => {
             takeOnEmptyStomach: 'रिकाम्या पोटी घ्या',
             goBack: '← मागे जा',
             repeatInstructions: 'सूचना पुन्हा सांगा',
-            tryAgain: 'औषध ओळखता आले नाही. कृपया स्पष्ट फोटोसह पुन्हा प्रयत्न करा.'
+            tryAgain: 'औषध ओळखता आले नाही. कृपया स्पष्ट फोटोसह पुन्हा प्रयत्न करा.',
+            timeoutError: 'खूप वेळ लागत आहे. इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.'
         }
     };
 
@@ -198,63 +211,73 @@ const MyMedicines = () => {
         }
     };
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // BLIND VERIFICATION - User takes photo, AI identifies and cross-references
+    // ═══════════════════════════════════════════════════════════════════════
     const analyzeCapturedPhoto = async (base64, mimeType, previewUrl) => {
         setAnalyzing(true);
-        speak(labels.analyzing);
+        speak(labels.verifying);
+        
         try {
-            const prescriptionMeds = medicines.map(m => m.name).join(', ');
-            const result = await analyzeMedicinePhoto(base64, mimeType, prescriptionMeds);
+            // Get prescription medicines from localStorage (scanned earlier)
+            const prescriptionMeds = JSON.parse(localStorage.getItem('saarthi_prescription') || '[]');
             
-            if (result.success && result.data) {
-                const data = result.data;
-                
-                // Validate that this is actually a medicine photo
-                const validMedicineTypes = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops'];
-                const isMedicine = data.medicineType && 
-                    validMedicineTypes.some(type => 
-                        data.medicineType.toLowerCase().includes(type)
-                    );
-                
-                if (!isMedicine) {
-                    // Not a valid medicine - ask user to try again
-                    triggerAlert();
-                    speak(labels.tryAgain);
-                    return;
-                }
-                
-                const matchFound = medicines.some(m =>
-                    m.name?.toLowerCase().includes(data.packagingText?.toLowerCase() || '') ||
-                    data.packagingText?.toLowerCase().includes(m.name?.toLowerCase())
-                );
-                if (matchFound) {
-                    const newMed = {
-                        id: Date.now().toString(),
-                        name: data.packagingText || 'Medicine',
-                        visualDescription: data.visualDescription,
-                        visualColor: data.color,
-                        visualType: data.medicineType,
-                        expiryDate: data.expiryDate,
-                        userPhoto: previewUrl,
-                        quantity: 30,
-                        addedAt: Date.now()
-                    };
-                    const updated = [...medicines, newMed];
-                    setMedicines(updated);
-                    localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
-                    triggerSuccess();
-                    speak(labels.added);
-                } else {
-                    triggerAlert();
-                    speak(labels.notInPrescription);
-                }
-            } else {
-                // Analysis failed - ask to try again
+            // Call blind verification API
+            const result = await verifyMedicinePhoto(base64, mimeType, prescriptionMeds);
+            
+            if (!result.success) {
                 triggerAlert();
-                speak(labels.tryAgain);
+                speak(labels.blurryImage);
+                return;
             }
-        } catch {
+            
+            // Handle unreadable image (blurry, glare, etc.)
+            if (!result.isReadable) {
+                triggerAlert();
+                speak(labels.blurryImage);
+                console.log('📷 Unreadable image reason:', result.reason);
+                return;
+            }
+            
+            // Store verification result for modal display
+            setVerificationResult({
+                ...result,
+                previewUrl
+            });
+            setShowVerificationModal(true);
+            
+            if (result.matchFound && result.matchedMedicine) {
+                // SUCCESS: Match found in prescription
+                triggerSuccess();
+                speak(`${labels.matchFound} ${result.detectedName}`);
+                
+                // Update the matched medicine with user's photo
+                const updatedMeds = medicines.map(med => 
+                    med.id === result.matchedMedicine.id 
+                        ? { ...med, userPhoto: previewUrl, verified: true }
+                        : med
+                );
+                setMedicines(updatedMeds);
+                localStorage.setItem('saarthi_medicines', JSON.stringify(updatedMeds));
+                
+            } else {
+                // WARNING: Not in prescription
+                triggerAlert();
+                speak(labels.notInPrescription);
+            }
+            
+        } catch (error) {
+            console.error('Verification error:', error);
+            
+            let message = labels.blurryImage;
+            
+            // Handle timeout specifically
+            if (error.message === 'API_TIMEOUT') {
+                message = labels.timeoutError;
+            }
+            
             triggerAlert();
-            speak(labels.tryAgain);
+            speak(message);
         } finally {
             setAnalyzing(false);
         }
@@ -269,13 +292,13 @@ const MyMedicines = () => {
 
     return (
         <motion.div
-            className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white pb-32 max-w-lg mx-auto"
+            className="min-h-screen flex flex-col bg-gradient-to-b from-gray-50 to-white pb-32"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
         >
-            {/* Header */}
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white px-4 py-6 pt-8 pb-10 rounded-b-3xl shadow-xl">
+            {/* Header - Matching ReminderList style with Blue color */}
+            <div className="bg-gradient-to-br from-blue-500 to-blue-700 text-white p-6 pt-8 pb-10 rounded-b-3xl shadow-premium-lg">
                 <motion.button
                     onClick={() => navigate('/dashboard')}
                     className="flex items-center gap-2 text-white/80 hover:text-white mb-4"
@@ -592,6 +615,86 @@ const MyMedicines = () => {
                                 🔊 {labels.repeatInstructions}
                             </motion.button>
                         </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ═══════════════════════════════════════════════════════════════
+                BLIND VERIFICATION RESULT MODAL
+            ═══════════════════════════════════════════════════════════════ */}
+            <AnimatePresence>
+                {showVerificationModal && verificationResult && (
+                    <motion.div 
+                        className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        onClick={() => setShowVerificationModal(false)}
+                    >
+                        <motion.div 
+                            className={`rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl ${
+                                verificationResult.matchFound 
+                                    ? 'bg-gradient-to-br from-green-50 to-green-100 border-4 border-green-400' 
+                                    : 'bg-gradient-to-br from-red-50 to-red-100 border-4 border-red-400'
+                            }`}
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.8, opacity: 0 }}
+                            onClick={e => e.stopPropagation()}
+                        >
+                            {/* Result Icon */}
+                            <div className="text-8xl mb-4">
+                                {verificationResult.matchFound ? '✅' : '⚠️'}
+                            </div>
+                            
+                            {/* Result Title */}
+                            <h2 className={`text-2xl font-bold mb-3 ${
+                                verificationResult.matchFound ? 'text-green-800' : 'text-red-800'
+                            }`}>
+                                {verificationResult.matchFound 
+                                    ? (language === 'hi-IN' ? 'मेल मिला!' : 'Match Found!')
+                                    : (language === 'hi-IN' ? 'पर्चे में नहीं' : 'Not in Prescription')
+                                }
+                            </h2>
+                            
+                            {/* Detected Medicine Name */}
+                            <p className={`text-xl font-semibold mb-4 ${
+                                verificationResult.matchFound ? 'text-green-700' : 'text-red-700'
+                            }`}>
+                                {verificationResult.detectedName || 'Unknown'}
+                            </p>
+                            
+                            {/* Preview Image */}
+                            {verificationResult.previewUrl && (
+                                <div className="w-32 h-32 mx-auto mb-4 rounded-2xl overflow-hidden border-4 border-white shadow-lg">
+                                    <img 
+                                        src={verificationResult.previewUrl} 
+                                        alt="Medicine" 
+                                        className="w-full h-full object-cover"
+                                    />
+                                </div>
+                            )}
+                            
+                            {/* Warning Message for No Match */}
+                            {!verificationResult.matchFound && (
+                                <p className="text-red-600 text-sm mb-4">
+                                    {language === 'hi-IN' 
+                                        ? 'कृपया अपने डॉक्टर से जांच करें।'
+                                        : 'Please check with your doctor.'}
+                                </p>
+                            )}
+                            
+                            {/* Close Button */}
+                            <motion.button
+                                onClick={() => setShowVerificationModal(false)}
+                                className={`w-full py-4 rounded-2xl font-bold text-lg text-white ${
+                                    verificationResult.matchFound ? 'bg-green-500' : 'bg-red-500'
+                                }`}
+                                whileTap={{ scale: 0.95 }}
+                            >
+                                {language === 'hi-IN' ? 'ठीक है' : 'OK'}
+                            </motion.button>
+                        </motion.div>
                     </motion.div>
                 )}
             </AnimatePresence>

@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useApp } from './AppContext';
 import { triggerHaptic } from '../utils/haptics';
+import { sanitizeVoiceInput } from '../utils/numberParser';
 
 const VoiceContext = createContext();
 
@@ -12,16 +14,35 @@ export const useVoice = () => {
     return context;
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ROUTE-AWARE SILENCE TIMEOUTS
+// Registration/Login: LONG timeout for elders who speak slowly
+// In-app navigation: SHORT timeout for quick command execution
+// ═══════════════════════════════════════════════════════════════════════════
+const ELDER_FRIENDLY_ROUTES = ['/register', '/login'];
+const ELDER_SILENCE_TIMEOUT = 6000;  // 6 seconds for elders on registration
+const QUICK_SILENCE_TIMEOUT = 1500;   // 1.5 seconds for in-app navigation
+const NO_SPEECH_TIMEOUT = 8000;       // 8 seconds if no speech at all on elder routes
+
 export const VoiceProvider = ({ children }) => {
     const { language, currentPageContent } = useApp();
+    const location = useLocation();
     const [isListening, setIsListening] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
     const [transcript, setTranscript] = useState('');
     const [error, setError] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(false); // Airlock cool-down
+    const [inputType, setInputType] = useState('text'); // 'text', 'tel', 'name'
 
     const recognitionRef = useRef(null);
     const synthRef = useRef(window.speechSynthesis);
     const silenceTimerRef = useRef(null);
+    const cooldownTimerRef = useRef(null);
+    const accumulatedTranscriptRef = useRef(''); // For accumulating speech during registration
+
+    // Check if current route needs elder-friendly long timeout
+    const isElderRoute = ELDER_FRIENDLY_ROUTES.some(r => location.pathname.startsWith(r));
+    const currentSilenceTimeout = isElderRoute ? ELDER_SILENCE_TIMEOUT : QUICK_SILENCE_TIMEOUT;
 
     // Initialize Speech Recognition
     useEffect(() => {
@@ -37,6 +58,7 @@ export const VoiceProvider = ({ children }) => {
                 console.log('🎙️ Speech recognition started');
                 setIsListening(true);
                 setError(null);
+                accumulatedTranscriptRef.current = ''; // Reset accumulator on new session
             };
 
             recognition.onresult = (event) => {
@@ -52,26 +74,50 @@ export const VoiceProvider = ({ children }) => {
                     }
                 }
 
+                // ═══════════════════════════════════════════════════════════════
+                // ELDER-FRIENDLY ACCUMULATION
+                // On registration/login: Accumulate all speech segments
+                // On other pages: Use only the latest segment for quick commands
+                // ═══════════════════════════════════════════════════════════════
+                const isElderPage = ELDER_FRIENDLY_ROUTES.some(r => 
+                    location.pathname.startsWith(r)
+                );
+
                 if (finalTranscript) {
-                    console.log('✅ Final transcript:', finalTranscript);
-                    setTranscript(finalTranscript.trim());
+                    if (isElderPage) {
+                        // ACCUMULATE: Append to previous input (for phone numbers spoken slowly)
+                        accumulatedTranscriptRef.current += ' ' + finalTranscript;
+                        const accumulated = accumulatedTranscriptRef.current.trim();
+                        console.log('✅ Accumulated transcript:', accumulated);
+                        setTranscript(accumulated);
+                    } else {
+                        // REPLACE: Use only latest for quick navigation commands
+                        console.log('✅ Final transcript:', finalTranscript);
+                        setTranscript(finalTranscript.trim());
+                    }
                 } else if (interimTranscript) {
                     console.log('📝 Interim:', interimTranscript);
+                    // Show interim for live feedback
+                    if (isElderPage) {
+                        setTranscript((accumulatedTranscriptRef.current + ' ' + interimTranscript).trim());
+                    }
                 }
 
                 // Auto-stop detection: Reset timer on every result (speech detected)
                 if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
 
-                // 1 second of silence after speech → auto-stop mic (faster response)
+                // Use route-aware silence timeout
+                const timeout = isElderPage ? ELDER_SILENCE_TIMEOUT : QUICK_SILENCE_TIMEOUT;
+                
                 silenceTimerRef.current = setTimeout(() => {
-                    console.log('🤫 Silence detected, auto-stopping mic...');
+                    console.log(`🤫 Silence detected (${timeout}ms), auto-stopping mic...`);
                     triggerHaptic([50, 50]); // Success chime haptic
                     if (recognitionRef.current) {
                         try {
                             recognitionRef.current.stop();
                         } catch (e) { }
                     }
-                }, 1000);
+                }, timeout);
             };
 
             recognition.onerror = (event) => {
@@ -100,7 +146,38 @@ export const VoiceProvider = ({ children }) => {
             }
             if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
         };
-    }, [language]);
+    }, [language, location.pathname]);
+
+    // AIRLOCK PROTOCOL: Reset voice state on route change
+    useEffect(() => {
+        console.log('🚪 Route changed to:', location.pathname);
+        
+        // Kill any active TTS and mic
+        if (synthRef.current) synthRef.current.cancel();
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.stop();
+            } catch (e) { }
+        }
+        
+        // Clear transcript buffer AND accumulator
+        setTranscript('');
+        accumulatedTranscriptRef.current = '';
+        setIsListening(false);
+        setIsSpeaking(false);
+        
+        // Enable 500ms cool-down "dead zone"
+        setIsProcessing(true);
+        if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+        cooldownTimerRef.current = setTimeout(() => {
+            setIsProcessing(false);
+            console.log('✅ Airlock cool-down complete, mic ready');
+        }, 500);
+        
+        return () => {
+            if (cooldownTimerRef.current) clearTimeout(cooldownTimerRef.current);
+        };
+    }, [location.pathname]);
 
     // Start listening
     const startListening = useCallback(() => {
@@ -109,32 +186,39 @@ export const VoiceProvider = ({ children }) => {
             console.warn('🔇 Mic blocked: TTS is currently active');
             return;
         }
+        
+        // AIRLOCK: Block during cool-down period
+        if (isProcessing) {
+            console.warn('🔇 Mic blocked: Airlock cool-down active');
+            return;
+        }
 
         if (recognitionRef.current && !isListening) {
             setTranscript('');
+            accumulatedTranscriptRef.current = ''; // Clear accumulator
             setError(null);
             try {
                 recognitionRef.current.start();
-                console.log('🎙️ Started listening...');
+                console.log(`🎙️ Started listening (timeout: ${isElderRoute ? 'ELDER' : 'QUICK'})...`);
 
-                // Start a 5-second "no speech" timeout
-                // If user doesn't say anything, auto-stop after 5 seconds
+                // Start "no speech" timeout - longer for elder routes
                 if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+                const noSpeechTimeout = isElderRoute ? NO_SPEECH_TIMEOUT : 5000;
                 silenceTimerRef.current = setTimeout(() => {
-                    console.log('⏱️ No speech detected for 5s, auto-stopping...');
+                    console.log(`⏱️ No speech detected for ${noSpeechTimeout/1000}s, auto-stopping...`);
                     triggerHaptic([30, 30]); // Soft haptic for timeout
                     if (recognitionRef.current) {
                         try {
                             recognitionRef.current.stop();
                         } catch (e) { }
                     }
-                }, 5000);
+                }, noSpeechTimeout);
 
             } catch (err) {
                 console.error('Error starting recognition:', err);
             }
         }
-    }, [isListening, isSpeaking]);
+    }, [isListening, isSpeaking, isProcessing, isElderRoute]);
 
     // Stop listening
     const stopListening = useCallback(() => {
@@ -148,6 +232,7 @@ export const VoiceProvider = ({ children }) => {
     // Reset transcript
     const resetTranscript = useCallback(() => {
         setTranscript('');
+        accumulatedTranscriptRef.current = '';
     }, []);
 
     // Text-to-Speech function
@@ -215,14 +300,18 @@ export const VoiceProvider = ({ children }) => {
     const value = {
         isListening,
         isSpeaking,
+        isProcessing,
         transcript,
         error,
+        inputType,
+        setInputType,
         startListening,
         stopListening,
         resetTranscript,
         speak,
         stopSpeaking,
         repeatContent,
+        sanitizeVoiceInput: (text) => sanitizeVoiceInput(text, inputType, language),
     };
 
     return (

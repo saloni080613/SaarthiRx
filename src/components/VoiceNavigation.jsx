@@ -3,13 +3,14 @@
  * Mounted at Root Level to listen on every page
  * Simple One-Word Keywords for Elder-Friendly navigation
  * + AI Medicine Addition via natural language
+ * + Context-Aware Commands (e.g., "Photo lo" on /scan)
  */
 
 import { useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useVoice } from '../context/VoiceContext';
 import { useApp } from '../context/AppContext';
-import { parseFuzzyCommand } from '../utils/fuzzyCommands';
+import { parseFuzzyCommand, parseContextCommand } from '../utils/fuzzyCommands';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { isMedicineAdditionCommand, addMedicineByVoice } from '../services/aiMedicineManager';
 
@@ -47,6 +48,21 @@ const VoiceNavigation = ({ children }) => {
                 'en-US': 'Going back',
                 'hi-IN': 'वापस जा रहा हूँ',
                 'mr-IN': 'मागे जातो आहे'
+            },
+            'camera': {
+                'en-US': 'Opening camera',
+                'hi-IN': 'कैमरा खोल रहा हूँ',
+                'mr-IN': 'कॅमेरा उघडतो आहे'
+            },
+            'gallery': {
+                'en-US': 'Opening gallery',
+                'hi-IN': 'गैलरी खोल रहा हूँ',
+                'mr-IN': 'गॅलरी उघडतो आहे'
+            },
+            'click': {
+                'en-US': 'Capturing',
+                'hi-IN': 'फोटो ले रहा हूँ',
+                'mr-IN': 'फोटो घेतो आहे'
             }
         };
         return messages[destination]?.[language] || messages[destination]?.['en-US'] || 'OK';
@@ -91,7 +107,43 @@ const VoiceNavigation = ({ children }) => {
             return;
         }
 
-        // Check for AI medicine addition command first
+        // Don't interfere with Welcome page (language selection)
+        if (location.pathname === '/') {
+            return;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // VOICE COMMAND AUDIT - Debug logging
+        // ═══════════════════════════════════════════════════════════════════════
+        console.log('🗣️ Voice Command Recognized:', transcript, '| Route:', location.pathname);
+
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE 1: Check CONTEXT-AWARE commands first (route-specific)
+        // ═══════════════════════════════════════════════════════════════════
+        const contextResult = parseContextCommand(transcript, location.pathname);
+        
+        if (contextResult.confidence > 0.5) {
+            triggerAction();
+            resetTranscript?.();
+            
+            // Emit custom event for page-specific handling
+            const voiceEvent = new CustomEvent('voiceAction', {
+                detail: { 
+                    action: contextResult.action,
+                    transcript: transcript
+                }
+            });
+            window.dispatchEvent(voiceEvent);
+            
+            // Play feedback sound
+            const feedbackKey = contextResult.action.toLowerCase();
+            speak(getNavigationMessage(feedbackKey));
+            
+            console.log(`🎯 Context command: ${contextResult.action} on ${location.pathname}`);
+            return;
+        }
+
+        // Check for AI medicine addition command
         if (isMedicineAdditionCommand(transcript)) {
             triggerAction();
             resetTranscript?.();
@@ -99,6 +151,9 @@ const VoiceNavigation = ({ children }) => {
             return;
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // PHASE 2: Check GLOBAL commands (work on any page)
+        // ═══════════════════════════════════════════════════════════════════
         const { action, confidence } = parseFuzzyCommand(transcript);
 
         // Only act on confident matches
@@ -172,4 +227,3 @@ const VoiceNavigation = ({ children }) => {
 };
 
 export default VoiceNavigation;
-

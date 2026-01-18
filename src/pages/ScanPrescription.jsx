@@ -119,6 +119,11 @@ const ScanPrescription = () => {
             'en-US': 'I could not read this prescription clearly. Please take a clearer photo.',
             'hi-IN': 'मैं यह पर्चा स्पष्ट रूप से नहीं पढ़ सका। कृपया एक साफ फोटो लें।',
             'mr-IN': 'मला हे प्रिस्क्रिप्शन स्पष्टपणे वाचता आले नाही. कृपया स्पष्ट फोटो घ्या.'
+        },
+        timeoutError: {
+            'en-US': 'It is taking too long. Please ensure you have good internet and try again.',
+            'hi-IN': 'इसमें बहुत समय लग रहा है। कृपया इंटरनेट की जाँच करें और फिर से प्रयास करें।',
+            'mr-IN': 'याला खूप वेळ लागत आहे. कृपया तुमचे इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.'
         }
     };
 
@@ -186,7 +191,7 @@ const ScanPrescription = () => {
         return () => clearTimeout(resultsTimer);
     }, [isDemoMode, language]);
 
-    // Voice command detection for camera control
+    // Voice command detection for camera control (local handling)
     useEffect(() => {
         if (!transcript) return;
 
@@ -219,6 +224,46 @@ const ScanPrescription = () => {
             }
         }
     }, [transcript, scanState]);
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // GLOBAL OMNI-ROUTER: Listen for voiceAction events from VoiceNavigation
+    // This enables context-aware commands like "Photo lo" via the global listener
+    // ═══════════════════════════════════════════════════════════════════════
+    useEffect(() => {
+        const handleVoiceAction = (event) => {
+            const { action } = event.detail;
+            console.log('🎯 VoiceAction received:', action, 'State:', scanState);
+
+            switch (action) {
+                case 'CAMERA':
+                    if (scanState === SCAN_STATES.IDLE) {
+                        console.log('📷 Opening camera via Omni-Router');
+                        startCamera();
+                    }
+                    break;
+                    
+                case 'GALLERY':
+                    if (scanState === SCAN_STATES.IDLE) {
+                        console.log('🖼️ Opening gallery via Omni-Router');
+                        fileInputRef.current?.click();
+                    }
+                    break;
+                    
+                case 'CLICK':
+                    if (scanState === SCAN_STATES.CAMERA_LIVE) {
+                        console.log('📸 Capturing via Omni-Router');
+                        captureFromVideo();
+                    }
+                    break;
+                    
+                default:
+                    break;
+            }
+        };
+
+        window.addEventListener('voiceAction', handleVoiceAction);
+        return () => window.removeEventListener('voiceAction', handleVoiceAction);
+    }, [scanState]);
 
     // Start live camera preview
     const startCamera = async () => {
@@ -394,12 +439,20 @@ const ScanPrescription = () => {
 
         } catch (err) {
             console.error('Analysis error:', err);
-            setError(err.message);
+            
+            let errorMessage = err.message;
+            
+            // Handle timeout specifically
+            if (errorMessage === 'API_TIMEOUT') {
+                errorMessage = getText('timeoutError');
+            }
+            
+            setError(errorMessage);
             setScanState(SCAN_STATES.ERROR);
             triggerAlert();
 
-            // Speak the actual error message (which is now elder-friendly)
-            speak(err.message);
+            // Speak the elder-friendly error message
+            speak(errorMessage);
         }
     };
 

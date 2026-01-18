@@ -21,6 +21,37 @@ const DANGEROUS_COMBOS = [
     { drugs: ['digoxin', 'amiodarone'], warning: 'Heart rhythm problems' },
 ];
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ANTI-HALLUCINATION SAFETY LAYER
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Blacklisted high-risk drugs - NEVER display, silent flag only
+const BLACKLISTED_DRUGS = [
+    'methamphetamine', 'fentanyl', 'heroin', 'cocaine',
+    'morphine sulfate injection', 'oxycontin', 'hydrocodone',
+    'lsd', 'ecstasy', 'mdma', 'pcp', 'ketamine recreational'
+];
+
+// Minimum confidence threshold for medicine extraction (0-100)
+// Medicines below this threshold will be filtered out
+const CONFIDENCE_THRESHOLD = 80;
+
+// API timeout in milliseconds - elderly users shouldn't wait more than 15 seconds
+const API_TIMEOUT_MS = 15000;
+
+/**
+ * Wrap a promise with a timeout
+ * @param {Promise} promise - The promise to wrap
+ * @param {number} ms - Timeout in milliseconds
+ * @returns {Promise} - Resolves with result or rejects on timeout
+ */
+const withTimeout = (promise, ms = API_TIMEOUT_MS) => {
+    const timeout = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('API_TIMEOUT')), ms);
+    });
+    return Promise.race([promise, timeout]);
+};
+
 /**
  * Parse frequency codes to actual time slots
  * Handles: OD, BD, TDS, QID, 1-1-1, 1-0-1, etc.
@@ -96,24 +127,35 @@ const DEFAULT_TIMES = {
  * @returns {Promise<object>} Extracted medicine data with parsed frequencies
  */
 export const analyzePrescription = async (base64Image, mimeType = 'image/jpeg') => {
-    // Models to try in order of preference (January 2026)
-    // Each model has its own quota pool, so we try multiple
+    // Models to try in order of preference (Optimized for SPEED)
+    // gemini-1.5-flash is the fastest model for low-latency feedback
     const MODELS_TO_TRY = [
-        'gemini-2.5-flash',           // Primary - stable since June 2025
-        'gemini-1.5-flash',           // Fallback - separate quota pool
-        'gemini-1.5-pro',             // Pro fallback - separate quota pool
+        'gemini-1.5-flash',           // FASTEST - Primary for speed
+        'gemini-2.5-flash',           // Fallback - newer but maybe slower?
+        'gemini-1.5-pro',             // Fallback - slower but smarter
     ];
 
     // Strict extraction prompt with explicit JSON schema
+    // ANTI-HALLUCINATION: Conservative extraction with confidence scoring
     const prompt = `You are an expert medical prescription OCR system for elderly Indian users.
 
-TASK: Analyze this prescription image and extract ALL medicine information.
+TASK: Analyze this prescription image and extract medicine information.
+
+═══════════════════════════════════════════════════════════════════════════════
+ANTI-HALLUCINATION RULES (CRITICAL):
+1. Do NOT invent or hallucinate medicines. Only extract medicines CLEARLY VISIBLE and LEGIBLE in the image.
+2. If text is blurry, smudged, or ambiguous, DO NOT GUESS. Skip that medicine entirely.
+3. Do NOT output generic drug names unless EXPLICITLY written on the prescription.
+4. For EACH medicine, include a confidence score (0-100) indicating how certain you are the text was read correctly.
+5. It is BETTER to miss a medicine than to invent a drug that does not exist in the image.
+═══════════════════════════════════════════════════════════════════════════════
 
 STRICT OUTPUT FORMAT - Return ONLY this JSON structure:
 {
   "medicines": [
     {
-      "name": "Medicine Name (generic preferred)",
+      "name": "Medicine Name (EXACTLY as written, do not invent)",
+      "confidence": 95,
       "dosage": "5mg, 500mg, etc.",
       "frequency": "EXACT as written: OD, BD, TDS, 1-1-1, 1-0-1, etc.",
       "duration_days": 5,
@@ -124,18 +166,21 @@ STRICT OUTPUT FORMAT - Return ONLY this JSON structure:
       "probable_reason": "Most likely medical condition this medicine is prescribed for (e.g., 'High blood pressure', 'Diabetes', 'Pain relief')"
     }
   ],
+  "extraction_quality": "CLEAR | PARTIAL | POOR",
   "doctor_name": "Name if visible",
   "prescription_date": "DD/MM/YYYY if visible",
+  "unreadable_sections": ["List any parts of prescription that could not be read"],
   "missing_info": ["List fields that were unclear or missing"]
 }
 
-CRITICAL RULES:
+EXTRACTION RULES:
 1. frequency MUST be extracted exactly as written (OD, BD, TDS, 1-1-1, 1-0-1, etc.)
 2. duration_days MUST be a number. If not specified, use 5 as default.
-3. visual_type and visual_color help elderly identify their pills
-4. probable_reason should be simple language elderly can understand
-5. Extract ALL medicines - do not skip any
-6. Return ONLY valid JSON, no markdown or explanation`;
+3. confidence MUST be 80-100 for clear text, 50-79 for partially visible, below 50 for guesses (avoid these!)
+4. visual_type and visual_color help elderly identify their pills
+5. probable_reason should be simple language elderly can understand
+6. Extract ALL medicines - do not skip any if clearly visible
+7. Return ONLY valid JSON, no markdown or explanation`;
 
     let lastError = null;
 
@@ -144,15 +189,19 @@ CRITICAL RULES:
             console.log(`🔄 Trying model: ${modelName}`);
             const model = genAI.getGenerativeModel({ model: modelName });
 
-            const result = await model.generateContent([
-                prompt,
-                {
-                    inlineData: {
-                        mimeType,
-                        data: base64Image
+            // Wrap API call with timeout - elderly users shouldn't wait forever
+            const result = await withTimeout(
+                model.generateContent([
+                    prompt,
+                    {
+                        inlineData: {
+                            mimeType,
+                            data: base64Image
+                        }
                     }
-                }
-            ]);
+                ]),
+                API_TIMEOUT_MS
+            );
 
             const response = await result.response;
             let text = response.text();
@@ -166,12 +215,45 @@ CRITICAL RULES:
             console.log(`✅ Success with model: ${modelName}`);
             console.log('📋 Raw Gemini extraction:', rawData);
 
+            // ═══════════════════════════════════════════════════════════════
+            // ANTI-HALLUCINATION SAFETY FILTER
+            // ═══════════════════════════════════════════════════════════════
+            const safeMedicines = (rawData.medicines || []).filter(med => {
+                const confidence = med.confidence || 0;
+                const nameLower = (med.name || '').toLowerCase();
+                
+                // 1. Filter by confidence threshold
+                if (confidence < CONFIDENCE_THRESHOLD) {
+                    console.warn(`⚠️ SKIPPED low-confidence medicine: "${med.name}" (${confidence}% < ${CONFIDENCE_THRESHOLD}%)`);
+                    return false;
+                }
+                
+                // 2. Filter blacklisted drugs (silent flag - security concern)
+                const isBlacklisted = BLACKLISTED_DRUGS.some(drug => nameLower.includes(drug));
+                if (isBlacklisted) {
+                    console.error(`🚨 BLACKLISTED DRUG DETECTED AND BLOCKED: "${med.name}"`);
+                    // TODO: Log to security audit in production
+                    return false;
+                }
+                
+                // 3. Skip obviously invalid names
+                if (!med.name || med.name.length < 2 || med.name === 'Unknown Medicine') {
+                    console.warn(`⚠️ SKIPPED invalid medicine name: "${med.name}"`);
+                    return false;
+                }
+                
+                return true;
+            });
+
+            console.log(`🛡️ Safety filter: ${rawData.medicines?.length || 0} → ${safeMedicines.length} medicines passed`);
+
             // Post-process medicines with frequency parsing
-            const processedMedicines = (rawData.medicines || []).map(med => {
+            const processedMedicines = safeMedicines.map(med => {
                 const frequencyInfo = parseFrequencyToTimes(med.frequency);
                 
                 return {
                     name: med.name || 'Unknown Medicine',
+                    confidence: med.confidence || 100,
                     dosage: med.dosage || '',
                     frequency: med.frequency || 'OD',
                     timing: frequencyInfo.times,
@@ -192,9 +274,13 @@ CRITICAL RULES:
                 medicines: processedMedicines,
                 doctorName: rawData.doctor_name || null,
                 date: rawData.prescription_date || null,
+                extractionQuality: rawData.extraction_quality || 'CLEAR',
+                unreadableSections: rawData.unreadable_sections || [],
                 missingInfo: rawData.missing_info || [],
                 // Flag if any medicine needs duration confirmation
-                needsDurationConfirmation: processedMedicines.some(m => m.durationWasGuessed)
+                needsDurationConfirmation: processedMedicines.some(m => m.durationWasGuessed),
+                // Safety metrics
+                filteredCount: (rawData.medicines?.length || 0) - processedMedicines.length
             };
 
             console.log('📋 Processed prescription:', processedData);
@@ -313,6 +399,149 @@ Return ONLY valid JSON, no explanation.`;
         success: false,
         error: 'Could not analyze the medicine photo. Please try again with a clearer image.',
         data: null
+    };
+};
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * BLIND VERIFICATION - User takes photo, AI identifies and cross-references
+ * ═══════════════════════════════════════════════════════════════════════════
+ * @param {string} base64Image - Photo of physical medicine strip/bottle
+ * @param {string} mimeType - Image MIME type
+ * @param {array} prescriptionMedicines - List of medicines from scanned prescription
+ * @returns {object} Match result with verification status
+ */
+export const verifyMedicinePhoto = async (base64Image, mimeType = 'image/jpeg', prescriptionMedicines = []) => {
+    const MODELS_TO_TRY = [
+        'gemini-1.5-flash', // Fastest response
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+    ];
+
+    const prescriptionList = prescriptionMedicines.map(m => m.name).join(', ');
+
+    const prompt = `You are a CONSERVATIVE medicine identification system for elderly users.
+
+TASK: Identify the medicine in this photo by reading TEXT on the packaging/strip/bottle.
+
+═══════════════════════════════════════════════════════════════════════════════
+STRICT ANTI-HALLUCINATION RULES:
+1. You MUST read the ACTUAL TEXT printed on the medicine packaging
+2. Do NOT guess based on pill color, shape, or size alone
+3. If text is blurry, has glare, or is not clearly readable, set "readable": false
+4. Only return a medicine name if you are 90%+ confident you read it correctly
+5. It is BETTER to say "unreadable" than to guess wrong
+═══════════════════════════════════════════════════════════════════════════════
+
+PRESCRIPTION MEDICINES TO MATCH AGAINST:
+${prescriptionList || 'None provided'}
+
+OUTPUT FORMAT (JSON only):
+{
+    "readable": true,
+    "detected_text": "Exact text you can read on packaging (e.g., 'AMLODIPINE 5MG')",
+    "detected_medicine_name": "Medicine name extracted from text",
+    "confidence": 95,
+    "reason_if_unreadable": null,
+    "visual_description": "Brief description of what you see"
+}
+
+If image is blurry or text is unreadable:
+{
+    "readable": false,
+    "detected_text": null,
+    "detected_medicine_name": null,
+    "confidence": 0,
+    "reason_if_unreadable": "Blurry | Glare | No text visible | Too far away | etc.",
+    "visual_description": "Brief description of what you see"
+}
+
+Return ONLY valid JSON, no explanation.`;
+
+    for (const modelName of MODELS_TO_TRY) {
+        try {
+            console.log(`🔍 Blind verification with: ${modelName}`);
+            const model = genAI.getGenerativeModel({ model: modelName });
+
+            // Wrap API call with timeout
+            const result = await withTimeout(
+                model.generateContent([
+                    prompt,
+                    {
+                        inlineData: {
+                            mimeType,
+                            data: base64Image
+                        }
+                    }
+                ]),
+                API_TIMEOUT_MS
+            );
+
+            const response = await result.response;
+            let text = response.text();
+            text = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+            const data = JSON.parse(text);
+            console.log('🔍 Blind verification result:', data);
+
+            // If not readable, return early with retry suggestion
+            if (!data.readable) {
+                return {
+                    success: true,
+                    isReadable: false,
+                    reason: data.reason_if_unreadable || 'Could not read text',
+                    visualDescription: data.visual_description,
+                    shouldRetry: true,
+                    matchFound: false,
+                    detectedName: null,
+                    matchedMedicine: null
+                };
+            }
+
+            // Cross-reference detected medicine against prescription list
+            const detectedName = (data.detected_medicine_name || '').toLowerCase().trim();
+            let matchedMedicine = null;
+            let matchFound = false;
+
+            for (const med of prescriptionMedicines) {
+                const prescriptionName = med.name.toLowerCase().trim();
+                
+                // Fuzzy matching - check if names contain each other
+                if (prescriptionName.includes(detectedName) || 
+                    detectedName.includes(prescriptionName) ||
+                    // Also check first word (brand name often differs from generic)
+                    prescriptionName.split(' ')[0] === detectedName.split(' ')[0]) {
+                    matchFound = true;
+                    matchedMedicine = med;
+                    break;
+                }
+            }
+
+            console.log(`🎯 Match result: ${matchFound ? 'FOUND' : 'NOT FOUND'} - "${data.detected_medicine_name}"`);
+
+            return {
+                success: true,
+                isReadable: true,
+                detectedText: data.detected_text,
+                detectedName: data.detected_medicine_name,
+                confidence: data.confidence,
+                visualDescription: data.visual_description,
+                matchFound,
+                matchedMedicine,
+                shouldRetry: false
+            };
+
+        } catch (error) {
+            console.warn(`⚠️ Blind verification failed with ${modelName}:`, error.message);
+            continue;
+        }
+    }
+
+    return {
+        success: false,
+        error: 'Could not analyze the medicine. Please try again.',
+        isReadable: false,
+        matchFound: false
     };
 };
 
