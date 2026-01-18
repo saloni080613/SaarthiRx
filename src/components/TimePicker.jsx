@@ -78,34 +78,34 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
     };
 
     return (
-        <div className="bg-white rounded-3xl p-6 shadow-premium-lg max-w-md mx-auto">
+        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-premium-lg w-full max-w-md mx-auto">
             {/* Header */}
-            <h3 className="text-2xl font-bold text-gray-800 text-center mb-6">
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-800 text-center mb-4 sm:mb-6">
                 Set Reminder Time
             </h3>
 
             {/* Time Wheels */}
-            <div className="flex items-center justify-center gap-4 mb-8">
+            <div className="flex items-center justify-center gap-2 sm:gap-4 mb-6 sm:mb-8">
                 {/* Hours Wheel */}
                 <div className="flex flex-col items-center">
                     <motion.button
                         onClick={() => changeHour(1)}
-                        className="w-20 h-12 flex items-center justify-center text-3xl text-gray-400 hover:text-primary"
+                        className="w-14 sm:w-20 h-10 sm:h-12 flex items-center justify-center text-2xl sm:text-3xl text-primary"
                         whileTap={{ scale: 0.9 }}
                     >
                         ▲
                     </motion.button>
                     <div
                         ref={hoursRef}
-                        className="w-24 h-20 bg-gradient-to-b from-gray-100 to-gray-50 rounded-2xl flex items-center justify-center border-2 border-primary shadow-inner"
+                        className="w-16 sm:w-24 h-14 sm:h-20 bg-gradient-to-b from-gray-100 to-gray-50 rounded-xl sm:rounded-2xl flex items-center justify-center border-2 border-primary shadow-inner"
                     >
-                        <span className="text-5xl font-bold text-gray-800">
+                        <span className="text-3xl sm:text-5xl font-bold text-gray-800">
                             {time.hours.toString().padStart(2, '0')}
                         </span>
                     </div>
                     <motion.button
                         onClick={() => changeHour(-1)}
-                        className="w-20 h-12 flex items-center justify-center text-3xl text-gray-400 hover:text-primary"
+                        className="w-14 sm:w-20 h-10 sm:h-12 flex items-center justify-center text-2xl sm:text-3xl text-primary"
                         whileTap={{ scale: 0.9 }}
                     >
                         ▼
@@ -113,28 +113,28 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
                 </div>
 
                 {/* Separator */}
-                <div className="text-5xl font-bold text-gray-400 pb-2">:</div>
+                <div className="text-3xl sm:text-5xl font-bold text-gray-400 pb-2">:</div>
 
                 {/* Minutes Wheel */}
                 <div className="flex flex-col items-center">
                     <motion.button
                         onClick={() => changeMinute(5)}
-                        className="w-20 h-12 flex items-center justify-center text-3xl text-gray-400 hover:text-primary"
+                        className="w-14 sm:w-20 h-10 sm:h-12 flex items-center justify-center text-2xl sm:text-3xl text-primary"
                         whileTap={{ scale: 0.9 }}
                     >
                         ▲
                     </motion.button>
                     <div
                         ref={minutesRef}
-                        className="w-24 h-20 bg-gradient-to-b from-gray-100 to-gray-50 rounded-2xl flex items-center justify-center border-2 border-primary shadow-inner"
+                        className="w-16 sm:w-24 h-14 sm:h-20 bg-gradient-to-b from-gray-100 to-gray-50 rounded-xl sm:rounded-2xl flex items-center justify-center border-2 border-primary shadow-inner"
                     >
-                        <span className="text-5xl font-bold text-gray-800">
+                        <span className="text-3xl sm:text-5xl font-bold text-gray-800">
                             {time.minutes.toString().padStart(2, '0')}
                         </span>
                     </div>
                     <motion.button
                         onClick={() => changeMinute(-5)}
-                        className="w-20 h-12 flex items-center justify-center text-3xl text-gray-400 hover:text-primary"
+                        className="w-14 sm:w-20 h-10 sm:h-12 flex items-center justify-center text-2xl sm:text-3xl text-primary"
                         whileTap={{ scale: 0.9 }}
                     >
                         ▼
@@ -142,11 +142,11 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
                 </div>
 
                 {/* AM/PM Toggle */}
-                <div className="flex flex-col gap-2 ml-2">
+                <div className="flex flex-col gap-1 sm:gap-2 ml-1 sm:ml-2">
                     <motion.button
                         onClick={togglePeriod}
                         className={`
-                            w-16 h-12 rounded-xl font-bold text-lg
+                            w-12 sm:w-16 h-10 sm:h-12 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg
                             transition-all duration-200
                             ${time.period === 'AM'
                                 ? 'bg-primary text-white shadow-md'
@@ -160,7 +160,7 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
                     <motion.button
                         onClick={togglePeriod}
                         className={`
-                            w-16 h-12 rounded-xl font-bold text-lg
+                            w-12 sm:w-16 h-10 sm:h-12 rounded-lg sm:rounded-xl font-bold text-base sm:text-lg
                             transition-all duration-200
                             ${time.period === 'PM'
                                 ? 'bg-primary text-white shadow-md'
@@ -175,22 +175,22 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
             </div>
 
             {/* Quick Presets */}
-            <div className="mb-6">
-                <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <div className="mb-4 sm:mb-6">
+                <p className="text-xs sm:text-sm font-semibold text-gray-500 uppercase tracking-wide mb-2 sm:mb-3">
                     Quick Presets
                 </p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
                     {TIME_PRESETS.map((preset) => (
                         <motion.button
                             key={preset.label}
                             onClick={() => applyPreset(preset.time)}
-                            className="flex items-center justify-center gap-2 p-4 bg-gray-50 hover:bg-primary/10 rounded-xl border-2 border-gray-200 hover:border-primary transition-all"
+                            className="flex items-center justify-center gap-1.5 sm:gap-2 p-2.5 sm:p-4 bg-gray-50 hover:bg-primary/10 rounded-lg sm:rounded-xl border-2 border-gray-200 hover:border-primary transition-all"
                             whileTap={{ scale: 0.95 }}
                         >
-                            <span className="text-2xl">{preset.icon}</span>
+                            <span className="text-xl sm:text-2xl">{preset.icon}</span>
                             <div className="text-left">
-                                <div className="font-semibold text-gray-700">{preset.label}</div>
-                                <div className="text-sm text-gray-500">
+                                <div className="font-semibold text-sm sm:text-base text-gray-700">{preset.label}</div>
+                                <div className="text-xs sm:text-sm text-gray-500">
                                     {parseInt(preset.time.split(':')[0]) > 12
                                         ? `${parseInt(preset.time.split(':')[0]) - 12}:00 PM`
                                         : `${parseInt(preset.time.split(':')[0])}:00 AM`
@@ -203,11 +203,11 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3">
                 {onCancel && (
                     <motion.button
                         onClick={onCancel}
-                        className="flex-1 py-4 px-6 bg-gray-100 text-gray-700 rounded-2xl font-semibold text-lg hover:bg-gray-200 transition-colors"
+                        className="flex-1 py-3 sm:py-4 px-4 sm:px-6 bg-gray-100 text-gray-700 rounded-xl sm:rounded-2xl font-semibold text-base sm:text-lg hover:bg-gray-200 transition-colors"
                         whileTap={{ scale: 0.95 }}
                     >
                         Cancel
@@ -215,7 +215,7 @@ const TimePicker = ({ value = '08:00', onChange, onConfirm, onCancel }) => {
                 )}
                 <motion.button
                     onClick={handleConfirm}
-                    className="flex-1 py-4 px-6 bg-primary text-white rounded-2xl font-bold text-lg shadow-premium hover:shadow-premium-lg transition-all"
+                    className="flex-1 py-3 sm:py-4 px-4 sm:px-6 bg-primary text-white rounded-xl sm:rounded-2xl font-bold text-base sm:text-lg shadow-premium hover:shadow-premium-lg transition-all"
                     whileTap={{ scale: 0.95 }}
                 >
                     ✓ Set Time

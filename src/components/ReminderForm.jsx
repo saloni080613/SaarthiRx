@@ -182,30 +182,32 @@ const ReminderForm = ({ isOpen, onClose, onSave, reminder = null }) => {
                             />
                         </div>
 
-                        {/* Pill Color */}
-                        <div>
-                            <label className="block text-lg font-semibold text-gray-700 mb-3">
-                                {t.color}
-                            </label>
-                            <div className="flex flex-wrap gap-3">
-                                {PILL_COLORS.map((color) => (
-                                    <motion.button
-                                        key={color.value}
-                                        onClick={() => setFormData(prev => ({ ...prev, color: color.value }))}
-                                        className={`
-                                            w-12 h-12 rounded-full border-4 transition-all
-                                            ${formData.color === color.value
-                                                ? 'border-primary scale-110 shadow-lg'
-                                                : 'border-transparent hover:scale-105'
-                                            }
-                                        `}
-                                        style={{ backgroundColor: color.value }}
-                                        whileTap={{ scale: 0.9 }}
-                                        title={color.name}
-                                    />
-                                ))}
+                        {/* Pill Color - Only show when adding new reminder */}
+                        {!isEditing && (
+                            <div>
+                                <label className="block text-lg font-semibold text-gray-700 mb-3">
+                                    {t.color}
+                                </label>
+                                <div className="flex flex-wrap gap-3">
+                                    {PILL_COLORS.map((color) => (
+                                        <motion.button
+                                            key={color.value}
+                                            onClick={() => setFormData(prev => ({ ...prev, color: color.value }))}
+                                            className={`
+                                                w-12 h-12 rounded-full border-4 transition-all
+                                                ${formData.color === color.value
+                                                    ? 'border-primary scale-110 shadow-lg'
+                                                    : 'border-transparent hover:scale-105'
+                                                }
+                                            `}
+                                            style={{ backgroundColor: color.value }}
+                                            whileTap={{ scale: 0.9 }}
+                                            title={color.name}
+                                        />
+                                    ))}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Time Picker */}
                         <div>

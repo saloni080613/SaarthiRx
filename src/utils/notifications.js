@@ -125,7 +125,7 @@ export const scheduleReminderNotification = (medicineName, delayMs, language = '
 
 /**
  * Trigger "missed dose" notification after timeout
- * Deep-links to full-screen AlarmPage on click
+ * Deep-links to ReminderAlert page on click (same tab)
  * @param {object} medicine - Medicine object with name, visualDescription, visualColor, id
  * @param {string} language - Language code
  * @param {string} scheduledTime - ISO timestamp of when reminder was scheduled (for stale detection)
@@ -157,15 +157,19 @@ export const triggerMissedDoseNotification = (medicine, language = 'en-US', sche
             tag: `alarm-${medicineName}`,
             requireInteraction: true,
             onClick: () => {
-                // Deep-link to full-screen AlarmPage
-                const alarmUrl = medicineId 
-                    ? `/alarm/${medicineId}${scheduledTime ? `?scheduled=${encodeURIComponent(scheduledTime)}` : ''}`
-                    : '/alarm/default';
-                window.location.href = alarmUrl;
+                // Navigate to ReminderAlert page in the same tab (not a new tab)
+                const alertUrl = medicineId 
+                    ? `/reminder/alert/${medicineId}${scheduledTime ? `?scheduled=${encodeURIComponent(scheduledTime)}` : ''}`
+                    : '/reminder/alert';
+                
+                // Focus the existing window/tab and navigate
+                window.focus();
+                window.location.href = alertUrl;
             }
         }
     );
 };
+
 
 export default {
     requestNotificationPermission,

@@ -9,24 +9,28 @@ import { triggerAlert, triggerSuccess } from '../utils/haptics';
 
 /**
  * ReminderAlert - Full-screen alert when a reminder fires
+ * Can be triggered from:
+ * 1. ReminderScheduler (passes reminder ID)
+ * 2. Notification click (passes medicine ID)
  */
 const ReminderAlert = () => {
     const navigate = useNavigate();
     const { id } = useParams();
-    const { language } = useApp();
+    const { language, savedMedicines } = useApp();
     const { announce } = useVoiceButler();
     const { transcript } = useVoice();
 
     const [reminder, setReminder] = useState(null);
     const [dismissed, setDismissed] = useState(false);
+    const [skipped, setSkipped] = useState(false);
     const [snoozed, setSnoozed] = useState(false);
     const [showSnoozeOptions, setShowSnoozeOptions] = useState(false);
 
     const vibrationInterval = useRef(null);
     const voiceInterval = useRef(null);
 
-    // Get user name
-    const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    // Get user name from localStorage (works even if context isn't ready)
+    const userData = JSON.parse(localStorage.getItem('saarthi_user') || localStorage.getItem('userData') || '{}');
     const userName = userData.name || 'Friend';
 
     // Labels
@@ -62,11 +66,60 @@ const ReminderAlert = () => {
 
     const t = labels[language] || labels['en-US'];
 
-    // Load reminder
+    // Helper function to convert color names to hex
+    const getColorHex = (colorName) => {
+        const colors = {
+            'white': '#F9FAFB',
+            'pink': '#F472B6',
+            'blue': '#3B82F6',
+            'red': '#EF4444',
+            'yellow': '#FBBF24',
+            'green': '#10B981',
+            'orange': '#F97316',
+            'brown': '#92400E',
+            'purple': '#8B5CF6',
+            'gray': '#6B7280'
+        };
+        return colors[colorName?.toLowerCase()] || colors.blue;
+    };
+
+    // Load reminder or medicine data
     useEffect(() => {
         if (id) {
-            const r = getReminderById(id);
-            setReminder(r);
+            // First try to load as a reminder
+            const reminderData = getReminderById(id);
+            if (reminderData) {
+                setReminder(reminderData);
+                return;
+            }
+            
+            // If not found as reminder, try to load as medicine (from notification click)
+            // First check context, then localStorage
+            const storedMedicines = savedMedicines.length > 0 
+                ? savedMedicines 
+                : JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+            
+            const medicineData = storedMedicines.find(m => m.id === id);
+            if (medicineData) {
+                // Convert medicine data to reminder format for display
+                setReminder({
+                    id: medicineData.id,
+                    medicineName: medicineData.name,
+                    description: medicineData.visualDescription || `${medicineData.visualColor || 'blue'} tablet`,
+                    color: getColorHex(medicineData.visualColor) || '#3B82F6',
+                    time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+                });
+                return;
+            }
+            
+            // Fallback demo if nothing found
+            setReminder({
+                id: 'demo',
+                medicineName: 'Your Medicine',
+                description: 'tablet',
+                color: '#3B82F6',
+                time: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false })
+            });
         } else {
             // Demo reminder if no ID
             setReminder({
@@ -77,7 +130,7 @@ const ReminderAlert = () => {
                 time: '08:00'
             });
         }
-    }, [id]);
+    }, [id, savedMedicines]);
 
     // Create message
     const getMessage = () => {
@@ -101,6 +154,18 @@ const ReminderAlert = () => {
         triggerSuccess();
         setDismissed(true);
         clearIntervals();
+        
+        // Save to history
+        const history = JSON.parse(localStorage.getItem('saarthi_medicine_history') || '[]');
+        history.push({
+            id: Date.now().toString(),
+            medicineName: reminder?.medicineName || 'Medicine',
+            action: 'taken',
+            time: new Date().toISOString(),
+            scheduledTime: reminder?.time
+        });
+        localStorage.setItem('saarthi_medicine_history', JSON.stringify(history));
+        
         setTimeout(() => {
             navigate('/reminders');
         }, 1000);
@@ -119,19 +184,30 @@ const ReminderAlert = () => {
         }, 1500);
     };
 
-    // Handle skip
+    // Handle skip - shows different feedback than taken
     const handleSkip = () => {
-        triggerSuccess();
-        setDismissed(true);
+        setSkipped(true);
         clearIntervals();
+        
+        // Save to history as skipped
+        const history = JSON.parse(localStorage.getItem('saarthi_medicine_history') || '[]');
+        history.push({
+            id: Date.now().toString(),
+            medicineName: reminder?.medicineName || 'Medicine',
+            action: 'skipped',
+            time: new Date().toISOString(),
+            scheduledTime: reminder?.time
+        });
+        localStorage.setItem('saarthi_medicine_history', JSON.stringify(history));
+        
         setTimeout(() => {
             navigate('/reminders');
-        }, 500);
+        }, 800);
     };
 
     // Start alerts
     useEffect(() => {
-        if (!reminder || dismissed || snoozed) return;
+        if (!reminder || dismissed || snoozed || skipped) return;
 
         // Vibration every 2 seconds
         vibrationInterval.current = setInterval(() => {
@@ -198,6 +274,27 @@ const ReminderAlert = () => {
                 >
                     <div className="text-8xl mb-4">😴</div>
                     <p className="text-2xl font-bold">Snoozed</p>
+                </motion.div>
+            </motion.div>
+        );
+    }
+
+    // Skipped state - different visual (gray/neutral)
+    if (skipped) {
+        return (
+            <motion.div
+                className="min-h-screen flex items-center justify-center bg-gray-400"
+                initial={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+            >
+                <motion.div
+                    className="text-white text-center"
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: 'spring', stiffness: 300 }}
+                >
+                    <div className="text-8xl mb-4">⏭️</div>
+                    <p className="text-2xl font-bold">Skipped</p>
                 </motion.div>
             </motion.div>
         );
