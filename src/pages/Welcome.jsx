@@ -43,7 +43,49 @@ const Welcome = () => {
         // Silent welcome - no TTS on page load
     }, [setCurrentPageContent, announcePageAndAction]);
 
-    // Handler for language selection - defined before useEffect that uses it
+    // Listen for voice input and select language - INSTANT SWITCH
+    useEffect(() => {
+        if (!transcript) return;
+
+        const lowerTranscript = transcript.toLowerCase().trim();
+        console.log('Voice input on Welcome:', lowerTranscript);
+
+        // Check each language for matching keywords
+        for (const lang of languages) {
+            const match = lang.voiceKeywords.some(keyword =>
+                lowerTranscript.includes(keyword.toLowerCase())
+            );
+
+            if (match) {
+                console.log('⚡ INSTANT SWITCH: Language matched:', lang.label);
+                
+                // IMMEDIATE ACTION: Kill TTS and mic instantly
+                window.speechSynthesis.cancel();
+                stopListening();
+                resetTranscript();
+                
+                // Trigger haptic and set language
+                triggerSuccess();
+                setLanguage(lang.code);
+                
+                // Play TTS confirmation in background (fire-and-forget)
+                try {
+                    const utterance = new SpeechSynthesisUtterance(lang.confirmationMessage);
+                    utterance.lang = lang.code;
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                } catch (error) {
+                    console.error('TTS error:', error);
+                }
+                
+                // NAVIGATE IMMEDIATELY - don't wait for TTS
+                navigate('/register');
+                return;
+            }
+        }
+    }, [transcript, stopListening, resetTranscript, setLanguage, navigate]);
+
+    // Handle tap-based language selection (still waits for TTS for UX)
     const handleLanguageSelect = async (langCode, langLabel, confirmationMessage) => {
         triggerSuccess();
         setLanguage(langCode);
