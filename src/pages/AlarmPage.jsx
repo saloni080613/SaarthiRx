@@ -32,19 +32,36 @@ const AlarmPage = () => {
     const navigate = useNavigate();
     const { id: medicineId } = useParams();
     const [searchParams] = useSearchParams();
-    const { language, user, savedMedicines, decrementMedicineQuantity } = useApp();
+    const { language, user, savedMedicines: contextMedicines, decrementMedicineQuantity } = useApp();
     const { announce } = useVoiceButler();
     const { transcript, resetTranscript } = useVoice();
     
     const [status, setStatus] = useState('active'); // 'active' | 'taken' | 'skipped' | 'snoozed'
     const [isLoading, setIsLoading] = useState(false);
+    const [isInitializing, setIsInitializing] = useState(true);
+    const [localMedicines, setLocalMedicines] = useState([]);
     const vibrationRef = useRef(null);
     const hasSpoken = useRef(false);
 
     // Get user name
-    const userName = user?.name || 'Friend';
+    const userName = user?.name || localStorage.getItem('saarthi_user') 
+        ? JSON.parse(localStorage.getItem('saarthi_user') || '{}').name || 'Friend'
+        : 'Friend';
 
-    // Find medicine from context
+    // Load medicines from localStorage on mount (backup for when context isn't ready)
+    useEffect(() => {
+        const storedMedicines = localStorage.getItem('saarthi_medicines');
+        if (storedMedicines) {
+            setLocalMedicines(JSON.parse(storedMedicines));
+        }
+        // Give a small delay to ensure context has loaded
+        setTimeout(() => setIsInitializing(false), 300);
+    }, []);
+
+    // Use context medicines if available, otherwise use localStorage
+    const savedMedicines = contextMedicines.length > 0 ? contextMedicines : localMedicines;
+
+    // Find medicine from combined sources
     const medicine = savedMedicines.find(m => m.id === medicineId) || {
         id: medicineId,
         name: 'Your Medicine',
@@ -117,13 +134,20 @@ const AlarmPage = () => {
         }
     };
 
-    // Redirect if medicine not found
+    // Only redirect if medicine not found AFTER initialization is complete
     useEffect(() => {
-        if (medicineId !== 'default' && !savedMedicines.find(m => m.id === medicineId)) {
-            console.warn('Invalid medicine ID, redirecting to dashboard');
-            navigate('/dashboard');
+        // Don't redirect while still initializing
+        if (isInitializing) return;
+        
+        // For 'default' ID, always show demo medicine
+        if (medicineId === 'default') return;
+        
+        // Only redirect if we've loaded medicines but still can't find the one we need
+        if (savedMedicines.length > 0 && !savedMedicines.find(m => m.id === medicineId)) {
+            console.warn('Medicine not found in saved list, showing demo alarm');
+            // Don't redirect, just show with default medicine
         }
-    }, [medicineId, savedMedicines, navigate]);
+    }, [medicineId, savedMedicines, navigate, isInitializing]);
 
     // Auto-start voice announcement on mount
     useEffect(() => {

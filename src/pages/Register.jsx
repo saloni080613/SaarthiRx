@@ -160,11 +160,11 @@ const Register = () => {
             // Clear any existing auto-advance timer
             if (autoAdvanceRef.current) clearTimeout(autoAdvanceRef.current);
 
-            // Auto-advance after 300ms delay (gives user a moment to see their input)
+            // Auto-advance after 1.5s delay (gives elderly user time to see their input)
             autoAdvanceRef.current = setTimeout(() => {
                 console.log('🚀 Auto-advancing after voice input...');
                 handleNextRef.current?.();
-            }, 300);
+            }, 1500);
         }
 
         return () => {

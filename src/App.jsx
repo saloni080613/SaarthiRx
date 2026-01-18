@@ -16,6 +16,8 @@ import PrescriptionView from './pages/PrescriptionView';
 import ReminderList from './pages/ReminderList';
 import ReminderAlert from './pages/ReminderAlert';
 import MyMedicines from './pages/MyMedicines';
+import MedicineHistory from './pages/MedicineHistory';
+import ScanMedicine from './pages/ScanMedicine';
 import AlarmPage from './pages/AlarmPage';
 import DevTools from './components/DevTools';
 
@@ -39,6 +41,8 @@ function AnimatedRoutes() {
         <Route path="/reminder/alert/:id" element={<ReminderAlert />} />
         <Route path="/reminder/alert" element={<ReminderAlert />} />
         <Route path="/medicines" element={<MyMedicines />} />
+        <Route path="/history" element={<MedicineHistory />} />
+        <Route path="/scan-medicine" element={<ScanMedicine />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>

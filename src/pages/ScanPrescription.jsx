@@ -15,7 +15,7 @@ import { analyzePrescription, checkDrugInteractions, generateVoiceSummary, gener
 import { saveMedicines } from '../services/medicationService';
 import { createRemindersFromPrescription } from '../services/reminderService';
 import { getPrompt } from '../utils/translations';
-import GlobalActionButton from '../components/GlobalActionButton';
+import DualActionButtons from '../components/DualActionButtons';
 import VoiceNegotiation from '../components/VoiceNegotiation';
 import MedicineVerifier from '../components/MedicineVerifier';
 import { getDemoPrescriptionData } from '../utils/demoData';
@@ -470,16 +470,12 @@ const ScanPrescription = () => {
             setTimeout(async () => {
                 await speak(voiceMessage[language] || voiceMessage['en-US']);
                 triggerSuccess();
-                
-                // Navigate to dashboard after voice confirmation
-                setTimeout(() => {
-                    navigate('/dashboard');
-                }, 2000);
+                // User can now read results - no auto-redirect
             }, 2000);
 
         } catch (err) {
             console.error('Auto-commit error:', err);
-            // Still navigate on error - at least show results
+            // Still show results on error
         }
     };
 
@@ -885,7 +881,7 @@ const ScanPrescription = () => {
             )}
 
             {/* Global Voice/Mic Button - always at bottom */}
-            <GlobalActionButton />
+            <DualActionButtons />
         </motion.div>
     );
 };

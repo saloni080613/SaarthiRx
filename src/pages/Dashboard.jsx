@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
@@ -6,7 +6,7 @@ import { useVoice } from '../context/VoiceContext';
 import { triggerAction } from '../utils/haptics';
 import { cardHover, staggerContainer, staggerItem } from '../utils/animations';
 import { getPrompt } from '../utils/translations';
-import GlobalActionButton from '../components/GlobalActionButton';
+import DualActionButtons from '../components/DualActionButtons';
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -78,8 +78,22 @@ const Dashboard = () => {
             navigate('/medicines');
         } else if (action === 'reminders') {
             navigate('/reminders');
+        } else if (action === 'history') {
+            navigate('/history');
+        } else if (action === 'scanMedicine') {
+            navigate('/scan-medicine');
         }
     };
+
+    // Handle repeat (speaker button) - re-announces greeting
+    const handleRepeat = useCallback(() => {
+        const shortGreeting = {
+            'en-US': `Hello ${userName}. How can I help you today?`,
+            'hi-IN': `नमस्ते ${userName}। आज मैं आपकी कैसे मदद कर सकता हूँ?`,
+            'mr-IN': `नमस्कार ${userName}. आज मी तुम्हाला कशी मदत करू शकतो?`
+        };
+        speak(shortGreeting[language] || shortGreeting['en-US']);
+    }, [speak, language, userName]);
 
     return (
         <motion.div
@@ -158,24 +172,19 @@ const Dashboard = () => {
                     />
                 </motion.button>
 
-                {/* Secondary Actions Grid */}
+                {/* Secondary Actions Grid - 2x2 */}
                 <div className="grid grid-cols-2 gap-4">
                     {/* My Medicines */}
                     <motion.button
                         onClick={() => handleAction('medicines')}
-                        className="
-              p-6 rounded-2xl
-              bg-white border-2 border-gray-200
-              shadow-md hover:shadow-premium
-              transition-all
-            "
+                        className="p-5 rounded-2xl bg-white border-2 border-gray-200 shadow-md hover:shadow-premium transition-all flex flex-col items-center justify-center min-h-[120px]"
                         variants={{ ...cardHover, ...staggerItem }}
                         initial="rest"
                         whileHover="hover"
                         whileTap="tap"
                     >
-                        <div className="text-4xl mb-3">💊</div>
-                        <div className="text-xl font-semibold text-gray-800">
+                        <div className="text-4xl mb-2">💊</div>
+                        <div className="text-lg font-semibold text-gray-800 text-center">
                             {getPrompt('DASHBOARD_MEDICINES', language)}
                         </div>
                     </motion.button>
@@ -183,20 +192,45 @@ const Dashboard = () => {
                     {/* Reminders */}
                     <motion.button
                         onClick={() => handleAction('reminders')}
-                        className="
-              p-6 rounded-2xl
-              bg-white border-2 border-gray-200
-              shadow-md hover:shadow-premium
-              transition-all
-            "
+                        className="p-5 rounded-2xl bg-white border-2 border-gray-200 shadow-md hover:shadow-premium transition-all flex flex-col items-center justify-center min-h-[120px]"
                         variants={{ ...cardHover, ...staggerItem }}
                         initial="rest"
                         whileHover="hover"
                         whileTap="tap"
                     >
-                        <div className="text-4xl mb-3">⏰</div>
-                        <div className="text-xl font-semibold text-gray-800">
+                        <div className="text-4xl mb-2">⏰</div>
+                        <div className="text-lg font-semibold text-gray-800 text-center">
                             {getPrompt('DASHBOARD_REMINDERS', language)}
+                        </div>
+                    </motion.button>
+
+                    {/* Scan Medicine - NEW */}
+                    <motion.button
+                        onClick={() => handleAction('scanMedicine')}
+                        className="p-5 rounded-2xl bg-white border-2 border-blue-200 shadow-md hover:shadow-premium transition-all flex flex-col items-center justify-center min-h-[120px]"
+                        variants={{ ...cardHover, ...staggerItem }}
+                        initial="rest"
+                        whileHover="hover"
+                        whileTap="tap"
+                    >
+                        <div className="text-4xl mb-2">🔍</div>
+                        <div className="text-lg font-semibold text-gray-800 text-center">
+                            {getPrompt('DASHBOARD_SCAN_MEDICINE', language)}
+                        </div>
+                    </motion.button>
+
+                    {/* History */}
+                    <motion.button
+                        onClick={() => handleAction('history')}
+                        className="p-5 rounded-2xl bg-white border-2 border-gray-200 shadow-md hover:shadow-premium transition-all flex flex-col items-center justify-center min-h-[120px]"
+                        variants={{ ...cardHover, ...staggerItem }}
+                        initial="rest"
+                        whileHover="hover"
+                        whileTap="tap"
+                    >
+                        <div className="text-4xl mb-2">📋</div>
+                        <div className="text-lg font-semibold text-gray-800 text-center">
+                            {getPrompt('DASHBOARD_HISTORY', language)}
                         </div>
                     </motion.button>
                 </div>
@@ -217,8 +251,8 @@ const Dashboard = () => {
                 </motion.div>
             </motion.div>
 
-            {/* Global Action Button */}
-            <GlobalActionButton />
+            {/* Speaker + Mic Dual Action Buttons */}
+            <DualActionButtons onRepeat={handleRepeat} />
         </motion.div>
     );
 };

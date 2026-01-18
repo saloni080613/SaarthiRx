@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { useVoiceButler } from '../context/VoiceButlerContext';
 import { triggerAction } from '../utils/haptics';
 import { staggerContainer, staggerItem } from '../utils/animations';
-import GlobalActionButton from '../components/GlobalActionButton';
+import DualActionButtons from '../components/DualActionButtons';
 
 // Enhanced 3D Visual pill component with premium rendering
 const PillVisual = ({ description }) => {
@@ -244,7 +244,7 @@ const PrescriptionView = () => {
             </motion.div>
 
             {/* Global Action Button */}
-            <GlobalActionButton />
+            <DualActionButtons />
         </motion.div>
     );
 };

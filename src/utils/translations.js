@@ -116,6 +116,16 @@ export const VOICE_PROMPTS = {
         'hi-IN': 'रिमाइंडर',
         'mr-IN': 'रिमाइंडर'
     },
+    DASHBOARD_HISTORY: {
+        'en-US': 'History',
+        'hi-IN': 'इतिहास',
+        'mr-IN': 'इतिहास'
+    },
+    DASHBOARD_SCAN_MEDICINE: {
+        'en-US': 'Scan Medicine',
+        'hi-IN': 'दवाई स्कैन',
+        'mr-IN': 'औषध स्कॅन'
+    },
     DASHBOARD_VOICE_TITLE: {
         'en-US': 'Voice Commands:',
         'hi-IN': 'वॉइस कमांड:',

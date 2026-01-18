@@ -120,7 +120,8 @@ STRICT OUTPUT FORMAT - Return ONLY this JSON structure:
       "with_food": true,
       "visual_type": "Tablet | Capsule | Syrup | Injection",
       "visual_color": "White | Pink | Blue | Red | Yellow | etc.",
-      "special_instructions": "Any specific notes"
+      "special_instructions": "Any specific notes",
+      "probable_reason": "Most likely medical condition this medicine is prescribed for (e.g., 'High blood pressure', 'Diabetes', 'Pain relief')"
     }
   ],
   "doctor_name": "Name if visible",
@@ -132,8 +133,9 @@ CRITICAL RULES:
 1. frequency MUST be extracted exactly as written (OD, BD, TDS, 1-1-1, 1-0-1, etc.)
 2. duration_days MUST be a number. If not specified, use 5 as default.
 3. visual_type and visual_color help elderly identify their pills
-4. Extract ALL medicines - do not skip any
-5. Return ONLY valid JSON, no markdown or explanation`;
+4. probable_reason should be simple language elderly can understand
+5. Extract ALL medicines - do not skip any
+6. Return ONLY valid JSON, no markdown or explanation`;
 
     let lastError = null;
 
@@ -245,9 +247,9 @@ export const analyzeMedicinePhoto = async (base64Image, mimeType = 'image/jpeg',
 
     const prompt = `You are analyzing a photo of medicine (tablet, capsule, syrup, or packaging).
 
-TASK: Extract visual identification details and expiry information.
+TASK: Extract visual identification details, expiry information, and usage.
 
-${expectedMedicine ? `EXPECTED MEDICINE: ${expectedMedicine}` : ''}
+${expectedMedicine ? `EXPECTED MEDICINE(S) from user's prescription: ${expectedMedicine}` : ''}
 
 STRICT OUTPUT FORMAT - Return ONLY this JSON:
 {
@@ -258,7 +260,8 @@ STRICT OUTPUT FORMAT - Return ONLY this JSON:
     "size": "Small | Medium | Large",
     "medicine_type": "Tablet | Capsule | Syrup | Injection | Cream | Drops",
     "packaging_text": "Any medicine name visible on packaging",
-    "matches_expected": ${expectedMedicine ? 'true or false based on whether this looks like the expected medicine' : 'null'}
+    "matches_expected": ${expectedMedicine ? 'true if this medicine matches any in the expected list, false otherwise' : 'null'},
+    "usual_use": "Common medical conditions this medicine is typically prescribed for (e.g., 'Blood pressure control', 'Pain relief', 'Fever and cold')"
 }
 
 Return ONLY valid JSON, no explanation.`;
@@ -295,7 +298,8 @@ Return ONLY valid JSON, no explanation.`;
                     size: data.size,
                     medicineType: data.medicine_type,
                     packagingText: data.packaging_text,
-                    matchesExpected: data.matches_expected
+                    matchesExpected: data.matches_expected,
+                    usualUse: data.usual_use
                 }
             };
 

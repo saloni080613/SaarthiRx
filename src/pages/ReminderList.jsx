@@ -18,7 +18,7 @@ import {
     sendTestNotification
 } from '../services/notificationService';
 import ReminderForm from '../components/ReminderForm';
-import GlobalActionButton from '../components/GlobalActionButton';
+import DualActionButtons from '../components/DualActionButtons';
 import { triggerAction, triggerSuccess } from '../utils/haptics';
 
 /**
@@ -244,11 +244,11 @@ const ReminderList = () => {
                     </motion.div>
                 ) : (
                     /* Reminder Cards */
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                         {reminders.map((reminder, index) => (
                             <motion.div
                                 key={reminder.id}
-                                className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 relative overflow-hidden"
+                                className="bg-white rounded-2xl p-3 sm:p-5 shadow-md border border-gray-100 relative overflow-hidden"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.1, duration: 0.3 }}
@@ -257,51 +257,51 @@ const ReminderList = () => {
                             >
                                 {/* Color Bar */}
                                 <div
-                                    className="absolute left-0 top-0 bottom-0 w-2"
+                                    className="absolute left-0 top-0 bottom-0 w-1.5 sm:w-2"
                                     style={{ backgroundColor: reminder.color }}
                                 />
 
-                                <div className="flex items-start gap-4 pl-3">
-                                    {/* Pill Icon */}
+                                <div className="flex items-start gap-2 sm:gap-4 pl-2 sm:pl-3">
+                                    {/* Pill Icon - Smaller on mobile */}
                                     <div
-                                        className="w-14 h-14 rounded-full flex items-center justify-center shrink-0 shadow-inner"
+                                        className="w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center shrink-0 shadow-inner"
                                         style={{ backgroundColor: reminder.color + '20' }}
                                     >
                                         <div
-                                            className="w-8 h-8 rounded-full"
+                                            className="w-6 h-6 sm:w-8 sm:h-8 rounded-full"
                                             style={{ backgroundColor: reminder.color }}
                                         />
                                     </div>
 
                                     {/* Info */}
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="text-xl font-bold text-gray-800 truncate">
+                                        <h3 className="text-base sm:text-xl font-bold text-gray-800 truncate">
                                             {reminder.medicineName}
                                         </h3>
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-lg text-primary font-semibold">
+                                        <div className="flex items-center gap-1 sm:gap-2 mt-0.5 sm:mt-1 flex-wrap">
+                                            <span className="text-sm sm:text-lg text-primary font-semibold">
                                                 {formatTime(reminder.time)}
                                             </span>
-                                            <span className="text-gray-400">•</span>
-                                            <span className="text-gray-500">
+                                            <span className="text-gray-400 text-xs sm:text-base">•</span>
+                                            <span className="text-gray-500 text-xs sm:text-base">
                                                 {getTimePeriod(reminder.time)}
                                             </span>
                                         </div>
-                                        <p className="text-sm text-gray-400 mt-1">
+                                        <p className="text-xs sm:text-sm text-gray-400 mt-0.5 sm:mt-1">
                                             {formatDays(reminder.repeatDays)}
                                         </p>
                                     </div>
 
                                     {/* Toggle & Actions */}
-                                    <div className="flex flex-col items-end gap-2">
-                                        {/* Toggle Switch */}
+                                    <div className="flex flex-col items-end gap-1 sm:gap-2">
+                                        {/* Toggle Switch - Smaller on mobile */}
                                         <motion.button
                                             onClick={(e) => {
                                                 e.stopPropagation();
                                                 handleToggle(reminder.id);
                                             }}
                                             className={`
-                                                w-16 h-9 rounded-full p-1 transition-colors
+                                                w-12 h-7 sm:w-16 sm:h-9 rounded-full p-0.5 sm:p-1 transition-colors
                                                 ${reminder.enabled
                                                     ? 'bg-green-500'
                                                     : 'bg-gray-300'
@@ -310,8 +310,8 @@ const ReminderList = () => {
                                             whileTap={{ scale: 0.95 }}
                                         >
                                             <motion.div
-                                                className="w-7 h-7 bg-white rounded-full shadow-md"
-                                                animate={{ x: reminder.enabled ? 28 : 0 }}
+                                                className="w-6 h-6 sm:w-7 sm:h-7 bg-white rounded-full shadow-md"
+                                                animate={{ x: reminder.enabled ? (window.innerWidth < 640 ? 20 : 28) : 0 }}
                                                 transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                                             />
                                         </motion.button>
@@ -322,7 +322,7 @@ const ReminderList = () => {
                                                 e.stopPropagation();
                                                 setDeleteConfirm(reminder);
                                             }}
-                                            className="text-red-400 hover:text-red-600 p-2"
+                                            className="text-red-400 hover:text-red-600 p-1 sm:p-2 text-sm sm:text-base"
                                             whileTap={{ scale: 0.9 }}
                                         >
                                             🗑️
@@ -400,8 +400,8 @@ const ReminderList = () => {
                 )}
             </AnimatePresence>
 
-            {/* Global Action Button */}
-            <GlobalActionButton />
+            {/* Speaker + Mic Dual Action Buttons */}
+            <DualActionButtons onRepeat={() => announce(t.title)} />
         </motion.div>
     );
 };

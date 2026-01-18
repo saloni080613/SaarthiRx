@@ -13,7 +13,7 @@ import { useVoiceButler } from '../context/VoiceButlerContext';
 import { analyzeMedicinePhoto } from '../services/geminiService';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { compressImage, createPreviewUrl } from '../utils/imageUtils';
-import GlobalActionButton from '../components/GlobalActionButton';
+import DualActionButtons from '../components/DualActionButtons';
 
 const MyMedicines = () => {
     const navigate = useNavigate();
@@ -55,7 +55,8 @@ const MyMedicines = () => {
             takeWithFood: 'Take with food',
             takeOnEmptyStomach: 'Take on empty stomach',
             goBack: '← Go Back',
-            repeatInstructions: 'Repeat Instructions'
+            repeatInstructions: 'Repeat Instructions',
+            tryAgain: 'Could not identify medicine. Please try again with a clearer photo.'
         },
         'hi-IN': {
             title: 'मेरी दवाइयां',
@@ -79,7 +80,8 @@ const MyMedicines = () => {
             takeWithFood: 'खाने के साथ लें',
             takeOnEmptyStomach: 'खाली पेट लें',
             goBack: '← वापस जाएं',
-            repeatInstructions: 'निर्देश दोहराएं'
+            repeatInstructions: 'निर्देश दोहराएं',
+            tryAgain: 'दवाई पहचान नहीं सकी। कृपया स्पष्ट फोटो से पुनः प्रयास करें।'
         },
         'mr-IN': {
             title: 'माझी औषधे',
@@ -103,7 +105,8 @@ const MyMedicines = () => {
             takeWithFood: 'जेवणासोबत घ्या',
             takeOnEmptyStomach: 'रिकाम्या पोटी घ्या',
             goBack: '← मागे जा',
-            repeatInstructions: 'सूचना पुन्हा सांगा'
+            repeatInstructions: 'सूचना पुन्हा सांगा',
+            tryAgain: 'औषध ओळखता आले नाही. कृपया स्पष्ट फोटोसह पुन्हा प्रयत्न करा.'
         }
     };
 
@@ -201,8 +204,24 @@ const MyMedicines = () => {
         try {
             const prescriptionMeds = medicines.map(m => m.name).join(', ');
             const result = await analyzeMedicinePhoto(base64, mimeType, prescriptionMeds);
-            if (result.success) {
+            
+            if (result.success && result.data) {
                 const data = result.data;
+                
+                // Validate that this is actually a medicine photo
+                const validMedicineTypes = ['tablet', 'capsule', 'syrup', 'injection', 'cream', 'drops'];
+                const isMedicine = data.medicineType && 
+                    validMedicineTypes.some(type => 
+                        data.medicineType.toLowerCase().includes(type)
+                    );
+                
+                if (!isMedicine) {
+                    // Not a valid medicine - ask user to try again
+                    triggerAlert();
+                    speak(labels.tryAgain);
+                    return;
+                }
+                
                 const matchFound = medicines.some(m =>
                     m.name?.toLowerCase().includes(data.packagingText?.toLowerCase() || '') ||
                     data.packagingText?.toLowerCase().includes(m.name?.toLowerCase())
@@ -228,9 +247,14 @@ const MyMedicines = () => {
                     triggerAlert();
                     speak(labels.notInPrescription);
                 }
+            } else {
+                // Analysis failed - ask to try again
+                triggerAlert();
+                speak(labels.tryAgain);
             }
         } catch {
             triggerAlert();
+            speak(labels.tryAgain);
         } finally {
             setAnalyzing(false);
         }
@@ -251,7 +275,7 @@ const MyMedicines = () => {
             exit={{ opacity: 0 }}
         >
             {/* Header */}
-            <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white p-6 pt-8 pb-10 rounded-b-3xl shadow-xl">
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 text-white px-4 py-6 pt-8 pb-10 rounded-b-3xl shadow-xl">
                 <motion.button
                     onClick={() => navigate('/dashboard')}
                     className="flex items-center gap-2 text-white/80 hover:text-white mb-4"
@@ -260,12 +284,12 @@ const MyMedicines = () => {
                     <span className="text-2xl">←</span>
                     <span className="text-lg">{labels.back}</span>
                 </motion.button>
-                <h1 className="text-4xl font-bold mb-2">{labels.title}</h1>
-                <p className="text-lg text-white/80">{labels.subtitle}</p>
+                <h1 className="text-3xl sm:text-4xl font-bold mb-2">{labels.title}</h1>
+                <p className="text-base sm:text-lg text-white/80">{labels.subtitle}</p>
             </div>
 
             {/* Content */}
-            <div className="flex-1 p-4 -mt-4">
+            <div className="flex-1 px-2 py-4 -mt-4">
                 {medicines.length === 0 ? (
                     <motion.div
                         className="flex flex-col items-center justify-center py-16 text-center"
@@ -281,7 +305,7 @@ const MyMedicines = () => {
                         {medicines.map((medicine, index) => (
                             <motion.div
                                 key={medicine.id || index}
-                                className="bg-white rounded-2xl p-4 shadow-md border border-gray-100 min-h-[100px] relative overflow-hidden"
+                                className="bg-white rounded-2xl p-3 shadow-md border border-gray-100 min-h-[90px] relative overflow-hidden"
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: index * 0.08 }}
@@ -292,22 +316,22 @@ const MyMedicines = () => {
                                     style={{ backgroundColor: getColor(medicine.visualColor) }}
                                 />
 
-                                <div className="flex items-center gap-4 pl-3">
+                                <div className="flex items-center gap-2 pl-1">
                                     {/* Visual */}
                                     <div className="shrink-0">
                                         {medicine.userPhoto ? (
                                             <img
                                                 src={medicine.userPhoto}
                                                 alt={medicine.name}
-                                                className="w-14 h-14 rounded-xl object-cover shadow-sm"
+                                                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl object-cover shadow-sm"
                                             />
                                         ) : (
                                             <div
-                                                className="w-14 h-14 rounded-xl flex items-center justify-center shadow-inner"
+                                                className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shadow-inner"
                                                 style={{ backgroundColor: getColor(medicine.visualColor) + '20' }}
                                             >
                                                 <div
-                                                    className="w-8 h-8 rounded-full shadow-md"
+                                                    className="w-6 h-6 sm:w-8 sm:h-8 rounded-full shadow-md"
                                                     style={{ backgroundColor: getColor(medicine.visualColor) }}
                                                 />
                                             </div>
@@ -316,17 +340,17 @@ const MyMedicines = () => {
 
                                     {/* Info */}
                                     <div className="flex-1 min-w-0">
-                                        <h3 className="text-lg font-bold text-gray-800 truncate">
+                                        <h3 className="text-base sm:text-lg font-bold text-gray-800 truncate">
                                             {medicine.name}
                                         </h3>
-                                        <p className="text-sm text-gray-500 truncate">
+                                        <p className="text-xs sm:text-sm text-gray-500 truncate">
                                             {medicine.visualType || 'Tablet'} • {medicine.dosage || ''}
                                         </p>
                                     </div>
 
                                     {/* Quantity + Details */}
-                                    <div className="flex flex-col items-end gap-2">
-                                        <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                        <div className={`px-2 py-0.5 rounded-full text-xs sm:text-sm font-bold ${
                                             medicine.quantity < 3
                                                 ? 'bg-red-100 text-red-600'
                                                 : 'bg-gray-100 text-gray-700'
@@ -336,10 +360,10 @@ const MyMedicines = () => {
 
                                         <motion.button
                                             onClick={() => setSelectedMedicine(medicine)}
-                                            className="text-blue-500 text-sm font-medium flex items-center gap-1"
+                                            className="text-blue-500 text-xs font-medium flex items-center gap-0.5"
                                             whileTap={{ scale: 0.95 }}
                                         >
-                                            👁️ {labels.details}
+                                            👁️ <span className="hidden sm:inline">{labels.details}</span><span className="sm:hidden">Info</span>
                                         </motion.button>
                                     </div>
                                 </div>
@@ -354,16 +378,6 @@ const MyMedicines = () => {
                     </div>
                 )}
             </div>
-
-            {/* Add Medicine Button - Above Mic, Centered, Simple */}
-            <motion.button
-                onClick={openCamera}
-                className="fixed bottom-32 inset-x-0 mx-auto w-fit bg-blue-500 hover:bg-blue-600 text-white px-5 py-2.5 rounded-full font-medium shadow-md flex items-center gap-2 z-40"
-                whileTap={{ scale: 0.97 }}
-            >
-                <span>📷</span>
-                <span>{labels.addNew}</span>
-            </motion.button>
 
             {/* Hidden File Input */}
             <input
@@ -583,7 +597,7 @@ const MyMedicines = () => {
             </AnimatePresence>
 
             {/* Global Action Button */}
-            <GlobalActionButton />
+            <DualActionButtons />
         </motion.div>
     );
 };
