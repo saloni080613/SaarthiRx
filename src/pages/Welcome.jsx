@@ -12,7 +12,7 @@ const Welcome = () => {
     const navigate = useNavigate();
     const { setLanguage, setCurrentPageContent } = useApp();
     const { announcePageAndAction } = useVoiceButler();
-    const { transcript, isListening } = useVoice();
+    const { transcript, isListening, stopListening, resetTranscript } = useVoice();
 
     const languages = [
         {
@@ -43,7 +43,7 @@ const Welcome = () => {
         // Silent welcome - no TTS on page load
     }, [setCurrentPageContent, announcePageAndAction]);
 
-    // Listen for voice input and select language
+    // Listen for voice input and select language - INSTANT SWITCH
     useEffect(() => {
         if (!transcript) return;
 
@@ -57,13 +57,35 @@ const Welcome = () => {
             );
 
             if (match) {
-                console.log('Language matched:', lang.label);
-                handleLanguageSelect(lang.code, lang.label, lang.confirmationMessage);
+                console.log('⚡ INSTANT SWITCH: Language matched:', lang.label);
+                
+                // IMMEDIATE ACTION: Kill TTS and mic instantly
+                window.speechSynthesis.cancel();
+                stopListening();
+                resetTranscript();
+                
+                // Trigger haptic and set language
+                triggerSuccess();
+                setLanguage(lang.code);
+                
+                // Play TTS confirmation in background (fire-and-forget)
+                try {
+                    const utterance = new SpeechSynthesisUtterance(lang.confirmationMessage);
+                    utterance.lang = lang.code;
+                    utterance.rate = 0.9;
+                    window.speechSynthesis.speak(utterance);
+                } catch (error) {
+                    console.error('TTS error:', error);
+                }
+                
+                // NAVIGATE IMMEDIATELY - don't wait for TTS
+                navigate('/register');
                 return;
             }
         }
-    }, [transcript]);
+    }, [transcript, stopListening, resetTranscript, setLanguage, navigate]);
 
+    // Handle tap-based language selection (still waits for TTS for UX)
     const handleLanguageSelect = async (langCode, langLabel, confirmationMessage) => {
         triggerSuccess();
         setLanguage(langCode);
@@ -76,10 +98,10 @@ const Welcome = () => {
             utterance.pitch = 1;
             window.speechSynthesis.speak(utterance);
 
-            // Wait for TTS to complete, then navigate
+            // Wait for TTS to complete (better UX for tap), then navigate
             await new Promise(resolve => {
                 utterance.onend = resolve;
-                setTimeout(resolve, 4000); // Fallback after 4 seconds
+                setTimeout(resolve, 2000); // Reduced fallback to 2 seconds
             });
         } catch (error) {
             console.error('TTS error:', error);
