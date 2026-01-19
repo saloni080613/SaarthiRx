@@ -12,7 +12,9 @@ import { useVoice } from '../context/VoiceContext';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { compressImage, createPreviewUrl, revokePreviewUrl } from '../utils/imageUtils';
 import { analyzeMedicinePhoto } from '../services/geminiService';
+import { findBestMedicineMatch } from '../data/medicineDatabase';
 import DualActionButtons from '../components/DualActionButtons';
+
 
 const SCAN_STATES = {
     IDLE: 'IDLE',
@@ -187,16 +189,50 @@ const ScanMedicine = () => {
                 const data = result.data;
                 setScannedData(data);
 
-                // Try to find matching medicine in user's list
-                const match = medicines.find(m => {
-                    const medNameLower = m.name?.toLowerCase() || '';
-                    const packagingLower = data.packagingText?.toLowerCase() || '';
+                // Step 1: Try to correct the scanned medicine name using our database
+                const packagingText = data.packagingText || '';
+                const dbMatch = findBestMedicineMatch(packagingText, 60);
+                
+                // Step 2: Try to find matching medicine in user's prescription list
+                let match = null;
+                
+                if (dbMatch) {
+                    // Scanned medicine was found in our database
+                    // Now check if this corrected name matches any prescription medicine
+                    console.log(`🎯 Database match: "${packagingText}" → "${dbMatch.medicine.name}"`);
                     
-                    // Check if packaging text matches medicine name
-                    return medNameLower.includes(packagingLower) || 
-                           packagingLower.includes(medNameLower) ||
-                           (data.matchesExpected === true);
-                });
+                    match = medicines.find(m => {
+                        const prescriptionName = m.name?.toLowerCase() || '';
+                        const dbName = dbMatch.medicine.name.toLowerCase();
+                        // Exact or close match with database-corrected name
+                        return prescriptionName === dbName || 
+                               prescriptionName.includes(dbName) || 
+                               dbName.includes(prescriptionName);
+                    });
+                }
+                
+                // Fallback: Try fuzzy matching on prescription medicines directly
+                if (!match) {
+                    match = medicines.find(m => {
+                        const medNameLower = m.name?.toLowerCase() || '';
+                        const packagingLower = packagingText.toLowerCase();
+                        
+                        // Direct fuzzy matching using medicine database
+                        const prescriptionMatch = findBestMedicineMatch(m.name, 60);
+                        const scannedMatch = findBestMedicineMatch(packagingText, 60);
+                        
+                        // Check if both resolve to the same database entry
+                        if (prescriptionMatch && scannedMatch && 
+                            prescriptionMatch.medicine.id === scannedMatch.medicine.id) {
+                            return true;
+                        }
+                        
+                        // Original matching logic as fallback
+                        return medNameLower.includes(packagingLower) || 
+                               packagingLower.includes(medNameLower) ||
+                               (data.matchesExpected === true);
+                    });
+                }
 
                 if (match) {
                     setMatchedMedicine(match);
