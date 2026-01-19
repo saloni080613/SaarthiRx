@@ -11,7 +11,7 @@ import { useApp } from '../context/AppContext';
 import { useVoice } from '../context/VoiceContext';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { compressImage, createPreviewUrl, revokePreviewUrl } from '../utils/imageUtils';
-import { analyzeMedicinePhoto } from '../services/geminiService';
+import { verifyMedicinePhoto } from '../services/geminiService';
 import DualActionButtons from '../components/DualActionButtons';
 
 const SCAN_STATES = {
@@ -40,12 +40,12 @@ const ScanMedicine = () => {
     // Labels
     const t = {
         'en-US': {
-            title: 'Scan Medicine',
-            subtitle: 'Verify your medicine',
+            title: 'Verify Medicine',
+            subtitle: 'Check if this medicine is in your prescription',
             camera: 'Take Photo',
             gallery: 'From Gallery',
-            analyzing: 'Identifying medicine...',
-            matchFound: 'Medicine Found!',
+            analyzing: 'Reading medicine label...',
+            matchFound: 'Safe to Take!',
             noMatch: 'Not in Your Prescription',
             medicineDetails: 'Medicine Details',
             expires: 'Expires',
@@ -57,12 +57,12 @@ const ScanMedicine = () => {
             notInList: 'This medicine is not in your prescription. Please consult your doctor.'
         },
         'hi-IN': {
-            title: 'दवाई स्कैन',
-            subtitle: 'अपनी दवाई की पुष्टि करें',
+            title: 'दवाई जांचें',
+            subtitle: 'जांचें कि यह दवाई आपके पर्चे में है',
             camera: 'फोटो लें',
             gallery: 'गैलरी से',
-            analyzing: 'दवाई पहचान रहे हैं...',
-            matchFound: 'दवाई मिली!',
+            analyzing: 'दवाई का नाम पढ़ रहा हूँ...',
+            matchFound: 'लेना सुरक्षित!',
             noMatch: 'आपके पर्चे में नहीं है',
             medicineDetails: 'दवाई का विवरण',
             expires: 'समाप्ति',
@@ -173,63 +173,93 @@ const ScanMedicine = () => {
         }
     };
 
-    // Analyze medicine with Gemini
+    // ═══════════════════════════════════════════════════════════════════════
+    // SAFETY VALIDATOR - Cross-reference medicine against prescription
+    // ═══════════════════════════════════════════════════════════════════════
     const analyzeMedicine = async (base64, mimeType) => {
         setScanState(SCAN_STATES.ANALYZING);
         speak(labels.analyzing);
 
         try {
-            // Get list of user's medicines for Gemini to match against
-            const medicineNames = medicines.map(m => m.name).join(', ');
-            const result = await analyzeMedicinePhoto(base64, mimeType, medicineNames);
+            // Call blind verification API with fuzzy matching
+            const result = await verifyMedicinePhoto(base64, mimeType, medicines);
 
-            if (result.success && result.data) {
-                const data = result.data;
-                setScannedData(data);
-
-                // Try to find matching medicine in user's list
-                const match = medicines.find(m => {
-                    const medNameLower = m.name?.toLowerCase() || '';
-                    const packagingLower = data.packagingText?.toLowerCase() || '';
-                    
-                    // Check if packaging text matches medicine name
-                    return medNameLower.includes(packagingLower) || 
-                           packagingLower.includes(medNameLower) ||
-                           (data.matchesExpected === true);
-                });
-
-                if (match) {
-                    setMatchedMedicine(match);
-                    setScanState(SCAN_STATES.MATCH_FOUND);
-                    triggerSuccess();
-
-                    // Save expiry date to the medicine
-                    if (data.expiryDate) {
-                        const updated = medicines.map(m => 
-                            m.id === match.id 
-                                ? { ...m, expiryDate: data.expiryDate, lastScanned: new Date().toISOString() }
-                                : m
-                        );
-                        setMedicines(updated);
-                        localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
-                        speak(`${labels.matchFound} ${match.name}. ${labels.expiryUpdated}`);
-                    } else {
-                        speak(`${labels.matchFound} ${match.name}`);
-                    }
-                } else {
-                    setScanState(SCAN_STATES.NO_MATCH);
-                    triggerAlert();
-                    speak(labels.notInList);
-                }
-            } else {
+            // Handle unreadable image (blurry, glare, etc.)
+            if (!result.success || !result.isReadable) {
                 setScanState(SCAN_STATES.NO_MATCH);
                 triggerAlert();
-                speak(labels.notInList);
+                const blurryMessage = {
+                    'en-US': 'I cannot read the label clearly. Please try again with a clearer photo.',
+                    'hi-IN': 'मैं लेबल स्पष्ट नहीं पढ़ पा रहा। कृपया साफ फोटो से फिर कोशिश करें।',
+                    'mr-IN': 'मला लेबल स्पष्ट वाचता येत नाही. कृपया स्पष्ट फोटोने पुन्हा प्रयत्न करा.'
+                };
+                speak(blurryMessage[language] || blurryMessage['en-US']);
+                console.log('📷 Unreadable image:', result.reason);
+                return;
             }
+
+            setScannedData({
+                packagingText: result.detectedName,
+                visualDescription: result.visualDescription,
+                confidence: result.confidence
+            });
+
+            if (result.matchFound && result.matchedMedicine) {
+                // ✅ MATCH FOUND - Medicine is in prescription
+                setMatchedMedicine(result.matchedMedicine);
+                setScanState(SCAN_STATES.MATCH_FOUND);
+                triggerSuccess();
+
+                // Update medicine with last scanned time
+                const updated = medicines.map(m => 
+                    m.id === result.matchedMedicine.id 
+                        ? { ...m, lastScanned: new Date().toISOString(), verified: true }
+                        : m
+                );
+                setMedicines(updated);
+                localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
+
+                // Voice feedback with timing info
+                const timingMessage = result.matchedMedicine.timing?.length > 0 
+                    ? result.matchedMedicine.timing.join(' and ')
+                    : 'prescribed times';
+                
+                const matchMessage = {
+                    'en-US': `Yes! This is ${result.detectedName}. It matches your prescription. Take this in the ${timingMessage}.`,
+                    'hi-IN': `हाँ! यह ${result.detectedName} है। यह आपके पर्चे से मेल खाती है। इसे ${timingMessage} में लें।`,
+                    'mr-IN': `हो! हे ${result.detectedName} आहे. हे तुमच्या प्रिस्क्रिप्शनशी जुळते. हे ${timingMessage} मध्ये घ्या.`
+                };
+                speak(matchMessage[language] || matchMessage['en-US']);
+
+            } else {
+                // ❌ NO MATCH - Medicine NOT in prescription (DANGER)
+                setScanState(SCAN_STATES.NO_MATCH);
+                triggerAlert();
+
+                const warningMessage = {
+                    'en-US': `Warning! This medicine, ${result.detectedName || 'unknown'}, is NOT in your saved prescription list. Please do not take it without asking your doctor.`,
+                    'hi-IN': `चेतावनी! यह दवाई, ${result.detectedName || 'अज्ञात'}, आपकी सहेजी गई पर्ची में नहीं है। कृपया डॉक्टर से पूछे बिना इसे न लें।`,
+                    'mr-IN': `सावधान! हे औषध, ${result.detectedName || 'अज्ञात'}, तुमच्या जतन केलेल्या प्रिस्क्रिप्शनमध्ये नाही. कृपया डॉक्टरांना विचारल्याशिवाय हे घेऊ नका.`
+                };
+                speak(warningMessage[language] || warningMessage['en-US']);
+            }
+
         } catch (err) {
             console.error('Scan error:', err);
             setScanState(SCAN_STATES.NO_MATCH);
             triggerAlert();
+            
+            // Handle timeout
+            if (err.message === 'API_TIMEOUT') {
+                const timeoutMessage = {
+                    'en-US': 'Taking too long. Please check your internet and try again.',
+                    'hi-IN': 'बहुत समय लग रहा है। कृपया इंटरनेट जांचें और फिर प्रयास करें।',
+                    'mr-IN': 'खूप वेळ लागत आहे. कृपया इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.'
+                };
+                speak(timeoutMessage[language] || timeoutMessage['en-US']);
+            } else {
+                speak(labels.notInList);
+            }
         }
     };
 
