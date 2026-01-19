@@ -4,6 +4,7 @@
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { correctMedicineName } from '../data/medicineDatabase';
 
 // Initialize Gemini with API key validation
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
@@ -261,12 +262,23 @@ RULES:
 
             console.log(`🛡️ Safety filter: ${rawData.medicines?.length || 0} → ${safeMedicines.length} medicines passed`);
 
-            // Post-process medicines with frequency parsing
+            // Post-process medicines with frequency parsing and fuzzy name correction
             const processedMedicines = safeMedicines.map(med => {
                 const frequencyInfo = parseFrequencyToTimes(med.frequency);
                 
+                // Apply fuzzy matching to correct OCR errors
+                const nameCorrection = correctMedicineName(med.name || 'Unknown Medicine');
+                if (nameCorrection.wasCorrected) {
+                    console.log(`📝 Name corrected: "${med.name}" → "${nameCorrection.correctedName}" (${nameCorrection.matchScore}% match)`);
+                }
+                
+                // Use corrected data from database if available
+                const dbMedicine = nameCorrection.medicineData;
+                
                 return {
-                    name: med.name || 'Unknown Medicine',
+                    name: nameCorrection.correctedName,
+                    originalName: nameCorrection.wasCorrected ? med.name : null, // Track original for debugging
+                    nameCorrected: nameCorrection.wasCorrected,
                     confidence: med.confidence || 100,
                     dosage: med.dosage || '',
                     frequency: med.frequency || 'OD',
@@ -275,10 +287,13 @@ RULES:
                     reminderTimes: frequencyInfo.times.map(t => DEFAULT_TIMES[t]),
                     durationDays: med.duration_days || 5,
                     withFood: med.with_food ?? true,
-                    visualType: med.visual_type || 'Tablet',
-                    visualColor: med.visual_color || 'White',
-                    visualDescription: `${med.visual_color || 'White'} ${med.visual_type || 'Tablet'}`.trim(),
+                    visualType: dbMedicine?.visualType || med.visual_type || 'Tablet',
+                    visualColor: dbMedicine?.visualColor || med.visual_color || 'White',
+                    visualDescription: dbMedicine 
+                        ? `${dbMedicine.visualColor} ${dbMedicine.visualType}`
+                        : `${med.visual_color || 'White'} ${med.visual_type || 'Tablet'}`.trim(),
                     specialInstructions: med.special_instructions || '',
+                    probableReason: dbMedicine?.usualUse || med.probable_reason || '',
                     // Track if duration was explicitly set or defaulted
                     durationWasGuessed: !med.duration_days
                 };

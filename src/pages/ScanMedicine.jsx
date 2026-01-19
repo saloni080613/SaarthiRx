@@ -12,7 +12,9 @@ import { useVoice } from '../context/VoiceContext';
 import { triggerAction, triggerSuccess, triggerAlert } from '../utils/haptics';
 import { compressImage, createPreviewUrl, revokePreviewUrl } from '../utils/imageUtils';
 import { verifyMedicinePhoto } from '../services/geminiService';
+import { findBestMedicineMatch } from '../data/medicineDatabase';
 import DualActionButtons from '../components/DualActionButtons';
+
 
 const SCAN_STATES = {
     IDLE: 'IDLE',
@@ -184,7 +186,7 @@ const ScanMedicine = () => {
             // Call blind verification API with fuzzy matching
             const result = await verifyMedicinePhoto(base64, mimeType, medicines);
 
-            // Handle unreadable image (blurry, glare, etc.)
+            // Handle unreadable image (blurry, glare, etc.) - from teammate
             if (!result.success || !result.isReadable) {
                 setScanState(SCAN_STATES.NO_MATCH);
                 triggerAlert();
@@ -204,15 +206,64 @@ const ScanMedicine = () => {
                 confidence: result.confidence
             });
 
-            if (result.matchFound && result.matchedMedicine) {
+            // Try to use medicine database for enhanced matching when API doesn't find a match
+            let matchFound = result.matchFound;
+            let matchedMed = result.matchedMedicine;
+
+            // If API didn't find a match, try local database fuzzy matching
+            if (!matchFound && result.detectedName) {
+                const detectedName = result.detectedName;
+                
+                // Step 1: Try to correct the scanned medicine name using our database
+                const dbMatch = findBestMedicineMatch(detectedName, 60);
+                
+                if (dbMatch) {
+                    console.log(`🎯 Database match: "${detectedName}" → "${dbMatch.medicine.name}"`);
+                    
+                    // Check if this corrected name matches any prescription medicine
+                    matchedMed = medicines.find(m => {
+                        const prescriptionName = m.name?.toLowerCase() || '';
+                        const dbName = dbMatch.medicine.name.toLowerCase();
+                        return prescriptionName === dbName || 
+                               prescriptionName.includes(dbName) || 
+                               dbName.includes(prescriptionName);
+                    });
+                    
+                    if (matchedMed) matchFound = true;
+                }
+                
+                // Fallback: Try fuzzy matching on prescription medicines directly 
+                if (!matchedMed) {
+                    matchedMed = medicines.find(m => {
+                        // Direct fuzzy matching using medicine database
+                        const prescriptionMatch = findBestMedicineMatch(m.name, 60);
+                        const scannedMatch = findBestMedicineMatch(detectedName, 60);
+                        
+                        // Check if both resolve to the same database entry
+                        if (prescriptionMatch && scannedMatch && 
+                            prescriptionMatch.medicine.id === scannedMatch.medicine.id) {
+                            return true;
+                        }
+                        
+                        // Simple substring matching as final fallback
+                        const medNameLower = m.name?.toLowerCase() || '';
+                        const detectLower = detectedName.toLowerCase();
+                        return medNameLower.includes(detectLower) || detectLower.includes(medNameLower);
+                    });
+                    
+                    if (matchedMed) matchFound = true;
+                }
+            }
+
+            if (matchFound && matchedMed) {
                 // ✅ MATCH FOUND - Medicine is in prescription
-                setMatchedMedicine(result.matchedMedicine);
+                setMatchedMedicine(matchedMed);
                 setScanState(SCAN_STATES.MATCH_FOUND);
                 triggerSuccess();
 
                 // Update medicine with last scanned time
                 const updated = medicines.map(m => 
-                    m.id === result.matchedMedicine.id 
+                    m.id === matchedMed.id 
                         ? { ...m, lastScanned: new Date().toISOString(), verified: true }
                         : m
                 );
@@ -220,8 +271,8 @@ const ScanMedicine = () => {
                 localStorage.setItem('saarthi_medicines', JSON.stringify(updated));
 
                 // Voice feedback with timing info
-                const timingMessage = result.matchedMedicine.timing?.length > 0 
-                    ? result.matchedMedicine.timing.join(' and ')
+                const timingMessage = matchedMed.timing?.length > 0 
+                    ? matchedMed.timing.join(' and ')
                     : 'prescribed times';
                 
                 const matchMessage = {
