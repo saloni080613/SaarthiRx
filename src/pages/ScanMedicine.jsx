@@ -433,27 +433,11 @@ const ScanMedicine = () => {
                                 <h2 className="text-2xl font-bold text-orange-600">{labels.noMatch}</h2>
                             </div>
 
-                            {/* Scanned Info Card */}
-                            {scannedData && (
-                                <div className="bg-orange-50 rounded-2xl p-5 border-2 border-orange-200">
-                                    <h3 className="text-lg font-semibold text-gray-700 mb-2">{labels.description}</h3>
-                                    <p className="text-gray-600">
-                                        {scannedData.visualDescription || 
-                                         `${scannedData.color || ''} ${scannedData.medicineType || 'medicine'}`}
-                                    </p>
-                                    {scannedData.packagingText && (
-                                        <p className="mt-2 font-semibold text-gray-800">
-                                            "{scannedData.packagingText}"
-                                        </p>
-                                    )}
-                                    
-                                    {/* Usual Use */}
-                                    {scannedData.usualUse && (
-                                        <div className="mt-3 p-3 bg-blue-50 rounded-xl border border-blue-200">
-                                            <p className="text-sm text-blue-600 font-semibold">{labels.usualUse}:</p>
-                                            <p className="text-blue-800">{scannedData.usualUse}</p>
-                                        </div>
-                                    )}
+                            {/* Typical Use - Only show this */}
+                            {scannedData?.usualUse && (
+                                <div className="bg-blue-50 rounded-2xl p-5 border-2 border-blue-200">
+                                    <p className="text-sm text-blue-600 font-semibold mb-1">{labels.usualUse}:</p>
+                                    <p className="text-lg text-blue-800">{scannedData.usualUse}</p>
                                 </div>
                             )}
 
