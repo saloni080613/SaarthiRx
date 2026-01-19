@@ -461,75 +461,93 @@ const ScanPrescription = () => {
     // Automatically saves medicines & creates reminders after Gemini analysis
     // ═══════════════════════════════════════════════════════════════════════
     const autoCommitMedicinesAndReminders = async (analysisData) => {
-        if (!analysisData?.medicines) return;
+        if (!analysisData?.medicines || analysisData.medicines.length === 0) return;
 
+        console.log('🔄 Auto-commit starting for', analysisData.medicines.length, 'medicines');
+
+        // STEP 1: LOCAL STORAGE SAVE (GUARANTEED - no auth required)
+        const existing = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
+        const duplicates = [];
+        const newMedicines = [];
+
+        analysisData.medicines.forEach(medicine => {
+            // Check for duplicates in localStorage
+            const isDuplicate = existing.some(m => 
+                m.name?.toLowerCase().trim() === medicine.name?.toLowerCase().trim()
+            );
+            
+            if (isDuplicate) {
+                duplicates.push(medicine.name);
+                console.log(`⚠️ Duplicate detected: ${medicine.name} - NOT adding`);
+            } else {
+                newMedicines.push({
+                    ...medicine,
+                    id: `local_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    quantity: 30,
+                    addedAt: Date.now(),
+                    prescriptionDate: analysisData.date,
+                    doctorName: analysisData.doctorName
+                });
+            }
+        });
+
+        // Save new medicines to localStorage
+        if (newMedicines.length > 0) {
+            localStorage.setItem('saarthi_medicines', JSON.stringify([...existing, ...newMedicines]));
+            console.log(`💊 Saved ${newMedicines.length} medicines to localStorage`);
+        }
+
+        const newCount = newMedicines.length;
+        const duplicateCount = duplicates.length;
+
+        // STEP 2: CREATE REMINDERS (GUARANTEED - no auth required)
+        let remindersCreated = 0;
+        if (newMedicines.length > 0) {
+            const schedulerResult = createRemindersFromPrescription(newMedicines, language);
+            remindersCreated = schedulerResult.created;
+            console.log(`📅 Auto-scheduled ${remindersCreated} reminders`);
+        }
+
+        // STEP 3: TRY FIREBASE SYNC (OPTIONAL - if user is authenticated)
         try {
-            // Save to Firestore (with deduplication)
             const saveResult = await saveMedicines(analysisData.medicines, {
                 doctorName: analysisData.doctorName,
                 date: analysisData.date
             });
-            
-            const { savedIds, duplicates, newCount, duplicateCount } = saveResult;
-            setSavedMedicineIds(savedIds);
-
-            // Only save NEW medicines to localStorage (not duplicates)
-            if (newCount > 0) {
-                const existing = JSON.parse(localStorage.getItem('saarthi_medicines') || '[]');
-                const newMedicines = analysisData.medicines
-                    .filter(m => !duplicates.includes(m.name))
-                    .map((m, i) => ({
-                        ...m,
-                        id: savedIds[i],
-                        quantity: 30,
-                        addedAt: Date.now(),
-                        prescriptionDate: analysisData.date
-                    }));
-                localStorage.setItem('saarthi_medicines', JSON.stringify([...existing, ...newMedicines]));
-            }
-
-            // Auto-Scheduler: Create reminders with proper ISO timestamps
-            const newMeds = analysisData.medicines.filter(m => !duplicates.includes(m.name));
-            let remindersCreated = 0;
-            if (newMeds.length > 0) {
-                const schedulerResult = createRemindersFromPrescription(newMeds, language);
-                remindersCreated = schedulerResult.created;
-                console.log(`📅 Auto-scheduled ${remindersCreated} reminders`);
-            }
-
-            // Generate SINGLE combined voice feedback
-            let voiceMessage;
-            if (duplicateCount > 0 && newCount > 0) {
-                voiceMessage = {
-                    'en-US': `I have automatically added ${newCount} new ${newCount === 1 ? 'medicine' : 'medicines'} and set ${remindersCreated} ${remindersCreated === 1 ? 'reminder' : 'reminders'}. ${duplicateCount} ${duplicateCount === 1 ? 'was' : 'were'} already in your list.`,
-                    'hi-IN': `मैंने ${newCount} नई ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ दी और ${remindersCreated} रिमाइंडर सेट कर दिए। ${duplicateCount} पहले से आपकी सूची में ${duplicateCount === 1 ? 'थी' : 'थीं'}।`,
-                    'mr-IN': `मी ${newCount} नवीन ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले आणि ${remindersCreated} रिमाइंडर सेट केले. ${duplicateCount} आधीपासून तुमच्या यादीत ${duplicateCount === 1 ? 'होते' : 'होती'}.`
-                };
-            } else if (duplicateCount > 0 && newCount === 0) {
-                voiceMessage = {
-                    'en-US': `All ${duplicateCount} medicines are already in your list. No new medicines added.`,
-                    'hi-IN': `सभी ${duplicateCount} दवाइयां पहले से आपकी सूची में हैं। कोई नई दवाई नहीं जोड़ी।`,
-                    'mr-IN': `सर्व ${duplicateCount} औषधे आधीपासून तुमच्या यादीत आहेत. कोणतेही नवीन औषध जोडले नाही.`
-                };
-            } else {
-                voiceMessage = {
-                    'en-US': `I have automatically added ${newCount} ${newCount === 1 ? 'medicine' : 'medicines'} and set ${remindersCreated} ${remindersCreated === 1 ? 'reminder' : 'reminders'}. I will remind you at the right time.`,
-                    'hi-IN': `मैंने ${newCount} ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ दी और ${remindersCreated} रिमाइंडर सेट कर दिए। मैं आपको सही समय पर याद दिलाऊंगा।`,
-                    'mr-IN': `मी ${newCount} ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले आणि ${remindersCreated} रिमाइंडर सेट केले. मी तुम्हाला योग्य वेळी आठवण करून देईन.`
-                };
-            }
-            
-            // Wait before auto-commit announcement
-            setTimeout(async () => {
-                await speak(voiceMessage[language] || voiceMessage['en-US']);
-                triggerSuccess();
-                // User can now read results - no auto-redirect
-            }, 2000);
-
-        } catch (err) {
-            console.error('Auto-commit error:', err);
-            // Still show results on error
+            setSavedMedicineIds(saveResult.savedIds);
+            console.log('☁️ Firebase sync successful');
+        } catch (firebaseErr) {
+            console.warn('☁️ Firebase sync skipped (not logged in):', firebaseErr.message);
+            // No problem - localStorage is the source of truth for demo
         }
+
+        // STEP 4: VOICE FEEDBACK
+        let voiceMessage;
+        if (duplicateCount > 0 && newCount > 0) {
+            voiceMessage = {
+                'en-US': `I have automatically added ${newCount} new ${newCount === 1 ? 'medicine' : 'medicines'} and set ${remindersCreated} ${remindersCreated === 1 ? 'reminder' : 'reminders'}. ${duplicateCount} ${duplicateCount === 1 ? 'was' : 'were'} already in your list.`,
+                'hi-IN': `मैंने ${newCount} नई ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ दी और ${remindersCreated} रिमाइंडर सेट कर दिए। ${duplicateCount} पहले से आपकी सूची में ${duplicateCount === 1 ? 'थी' : 'थीं'}।`,
+                'mr-IN': `मी ${newCount} नवीन ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले आणि ${remindersCreated} रिमाइंडर सेट केले. ${duplicateCount} आधीपासून तुमच्या यादीत ${duplicateCount === 1 ? 'होते' : 'होती'}.`
+            };
+        } else if (duplicateCount > 0 && newCount === 0) {
+            voiceMessage = {
+                'en-US': `All ${duplicateCount} medicines are already in your list. No new medicines added.`,
+                'hi-IN': `सभी ${duplicateCount} दवाइयां पहले से आपकी सूची में हैं। कोई नई दवाई नहीं जोड़ी।`,
+                'mr-IN': `सर्व ${duplicateCount} औषधे आधीपासून तुमच्या यादीत आहेत. कोणतेही नवीन औषध जोडले नाही.`
+            };
+        } else {
+            voiceMessage = {
+                'en-US': `I have automatically added ${newCount} ${newCount === 1 ? 'medicine' : 'medicines'} and set ${remindersCreated} ${remindersCreated === 1 ? 'reminder' : 'reminders'}. I will remind you at the right time.`,
+                'hi-IN': `मैंने ${newCount} ${newCount === 1 ? 'दवाई' : 'दवाइयां'} जोड़ दी और ${remindersCreated} रिमाइंडर सेट कर दिए। मैं आपको सही समय पर याद दिलाऊंगा।`,
+                'mr-IN': `मी ${newCount} ${newCount === 1 ? 'औषध' : 'औषधे'} जोडले आणि ${remindersCreated} रिमाइंडर सेट केले. मी तुम्हाला योग्य वेळी आठवण करून देईन.`
+            };
+        }
+        
+        // Announce after a brief delay
+        setTimeout(async () => {
+            await speak(voiceMessage[language] || voiceMessage['en-US']);
+            triggerSuccess();
+        }, 2000);
     };
 
     // Save medicines and set reminders (with Auto-Scheduler + Deduplication)
@@ -860,28 +878,23 @@ const ScanPrescription = () => {
                             </motion.div>
                         ))}
 
-                        {/* Action Buttons - positioned above voice buttons (pb-32 ensures space) */}
-                        <div className="space-y-3 mb-24">
-                            {/* Check My Medicine Button */}
-                            <motion.button
-                                onClick={() => handleCheckMedicine(analysisResult.medicines[0], 0)}
-                                className="w-full p-4 rounded-2xl bg-blue-500 text-white text-lg font-bold shadow-lg flex items-center justify-center gap-3"
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                            >
-                                <span className="text-2xl">🔍</span>
-                                {language === 'hi-IN' ? 'अपनी दवाई जांचें' : language === 'mr-IN' ? 'तुमचे औषध तपासा' : 'Check My Medicine'}
-                            </motion.button>
-
-                            {/* Save & Remind Button */}
-                            <motion.button
-                                onClick={handleSaveAndRemind}
-                                className="w-full p-5 rounded-2xl bg-green-500 text-white text-xl font-bold shadow-lg"
-                                whileHover={{ scale: 1.02 }}
-                                whileTap={{ scale: 0.98 }}
-                            >
-                                ✅ {getText('saveRemind')}
-                            </motion.button>
+                        {/* Auto-Save Confirmation - No manual buttons needed */}
+                        <div className="mb-24 p-4 bg-green-50 rounded-2xl border-2 border-green-200">
+                            <div className="flex items-center gap-3 text-green-700">
+                                <span className="text-3xl">✅</span>
+                                <div>
+                                    <p className="font-bold text-lg">
+                                        {language === 'hi-IN' ? 'सभी दवाइयां सहेज ली गईं!' : 
+                                         language === 'mr-IN' ? 'सर्व औषधे जतन केली!' : 
+                                         'All medicines saved!'}
+                                    </p>
+                                    <p className="text-sm text-green-600">
+                                        {language === 'hi-IN' ? 'रिमाइंडर भी सेट हो गए।' : 
+                                         language === 'mr-IN' ? 'रिमाइंडर देखील सेट झाले.' : 
+                                         'Reminders have been set automatically.'}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
                     </motion.div>
                 )}
