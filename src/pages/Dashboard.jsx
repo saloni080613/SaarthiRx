@@ -56,19 +56,76 @@ const Dashboard = () => {
         }
     }, [language, setCurrentPageContent, speak, startListening, isListening]);
 
-    // Voice command: "Add Reminder" → navigate to /reminder
+    // ═══════════════════════════════════════════════════════════════════════
+    // DASHBOARD COMMAND DICTIONARY - Voice Command Center
+    // Handles dashboard-specific commands before global router
+    // ═══════════════════════════════════════════════════════════════════════
     useEffect(() => {
         if (!transcript) return;
 
         const cmd = transcript.toLowerCase();
-        const addReminderPatterns = ['add reminder', 'new reminder', 'रिमाइंडर जोड़ें', 'नवीन रिमाइंडर', 'रिमाइंडर'];
-
+        
+        // STOP command - highest priority (immediately silence TTS)
+        const stopPatterns = ['stop', 'ruko', 'रुको', 'bas', 'बस', 'chup', 'चुप'];
+        if (stopPatterns.some(p => cmd.includes(p))) {
+            window.speechSynthesis.cancel();
+            resetTranscript();
+            return;
+        }
+        
+        // READ INSTRUCTIONS / Next Reminder
+        const readPatterns = ['read', 'padho', 'पढ़ो', 'instructions', 'next medicine', 'next reminder', 'अगली दवाई'];
+        if (readPatterns.some(p => cmd.includes(p))) {
+            resetTranscript();
+            triggerAction();
+            
+            // Read next upcoming reminder from localStorage
+            const reminders = JSON.parse(localStorage.getItem('saarthi_reminders') || '[]');
+            const enabledReminders = reminders.filter(r => r.enabled);
+            
+            if (enabledReminders.length > 0) {
+                const nextReminder = enabledReminders[0];
+                const readMsg = {
+                    'en-US': `Your next medicine is ${nextReminder.medicineName} at ${nextReminder.time}.`,
+                    'hi-IN': `आपकी अगली दवाई ${nextReminder.medicineName} ${nextReminder.time} बजे है।`,
+                    'mr-IN': `तुमचे पुढचे औषध ${nextReminder.medicineName} ${nextReminder.time} वाजता आहे.`
+                };
+                speak(readMsg[language] || readMsg['en-US']);
+            } else {
+                const noRemindersMsg = {
+                    'en-US': 'You have no reminders set.',
+                    'hi-IN': 'आपके कोई रिमाइंडर नहीं हैं।',
+                    'mr-IN': 'तुमचे कोणतेही रिमाइंडर नाहीत.'
+                };
+                speak(noRemindersMsg[language] || noRemindersMsg['en-US']);
+            }
+            return;
+        }
+        
+        // CHECK MEDICINE - Navigate to verification page
+        const checkMedicinePatterns = ['check medicine', 'sahi hai kya', 'सही है क्या', 'जांच करो', 'verify', 'is this safe'];
+        if (checkMedicinePatterns.some(p => cmd.includes(p))) {
+            resetTranscript();
+            triggerAction();
+            const verifyMsg = {
+                'en-US': 'Opening verification camera. Show me the medicine.',
+                'hi-IN': 'जांच कैमरा खोल रहा हूँ। दवाई दिखाओ।',
+                'mr-IN': 'तपासणी कॅमेरा उघडतो आहे. औषध दाखवा.'
+            };
+            speak(verifyMsg[language] || verifyMsg['en-US']);
+            navigate('/scan-medicine');
+            return;
+        }
+        
+        // ADD REMINDER - Navigate to reminder page
+        const addReminderPatterns = ['add reminder', 'new reminder', 'रिमाइंडर जोड़ें', 'नवीन रिमाइंडर'];
         if (addReminderPatterns.some(p => cmd.includes(p))) {
             resetTranscript();
             triggerAction();
             navigate('/reminder');
+            return;
         }
-    }, [transcript, navigate, resetTranscript]);
+    }, [transcript, navigate, resetTranscript, speak, language]);
 
     const handleAction = (action) => {
         triggerAction();

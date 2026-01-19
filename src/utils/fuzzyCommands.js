@@ -13,8 +13,8 @@ const commands = [
     {
         action: 'SCAN',
         keywords: ['scan', 'camera', 'photo', 'picture', 'new', 'prescription', 'add prescription'],
-        hindiKeywords: ['स्कैन', 'कैमरा', 'फोटो', 'नया', 'दवाई', 'पर्चा'],
-        marathiKeywords: ['स्कॅन', 'कॅमेरा', 'फोटो', 'नवीन', 'औषध', 'प्रिस्क्रिप्शन']
+        hindiKeywords: ['स्कैन', 'कैमरा', 'फोटो', 'नया', 'पर्चा'],
+        marathiKeywords: ['स्कॅन', 'कॅमेरा', 'फोटो', 'नवीन', 'प्रिस्क्रिप्शन']
     },
     {
         action: 'MEDICINES',
@@ -45,6 +45,27 @@ const commands = [
         keywords: ['help', 'commands', 'assist', 'what can i say', 'options'],
         hindiKeywords: ['मदद', 'सहायता', 'हेल्प', 'क्या बोलूं'],
         marathiKeywords: ['मदत', 'साहाय्य', 'हेल्प', 'काय बोलू']
+    },
+    // ═══════════════════════════════════════════════════════════════════════
+    // NEW COMMANDS - Voice Command Center Expansion
+    // ═══════════════════════════════════════════════════════════════════════
+    {
+        action: 'VERIFY_MEDICINE',
+        keywords: ['verify', 'check medicine', 'is this safe', 'janch', 'sahi hai', 'medicine check', 'verify medicine', 'check my medicine'],
+        hindiKeywords: ['जांच', 'दवाई जांचो', 'सही है क्या', 'चेक करो', 'जांच करो', 'दवाई चेक'],
+        marathiKeywords: ['तपासा', 'औषध तपासा', 'बरोबर आहे का', 'तपासणी']
+    },
+    {
+        action: 'ALARM',
+        keywords: ['emergency', 'madad', 'test alarm', 'sos', 'panic'],
+        hindiKeywords: ['इमरजेंसी', 'मदद', 'बचाओ', 'एसओएस'],
+        marathiKeywords: ['आणीबाणी', 'मदत', 'वाचवा']
+    },
+    {
+        action: 'STOP',
+        keywords: ['stop', 'silence', 'quiet', 'shut up', 'ruko', 'bas', 'enough'],
+        hindiKeywords: ['रुको', 'बस', 'चुप', 'बंद करो', 'थांबो'],
+        marathiKeywords: ['थांबा', 'बस', 'शांत', 'बंद करा']
     }
 ];
 
@@ -155,6 +176,27 @@ export const parseFuzzyCommand = (input) => {
     // Strip filler words first
     const cleanedInput = stripFillerWords(input);
     const normalizedInput = cleanedInput.toLowerCase().trim();
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PRIORITY LOGIC: "scan medicine" or "check medicine" → VERIFY_MEDICINE
+    // This prevents confusion - "scan my medicine" should verify, not add prescription
+    // ═══════════════════════════════════════════════════════════════════════
+    const medicineWords = ['medicine', 'dawa', 'dawai', 'औषध', 'दवाई', 'गोली', 'pill'];
+    const checkWords = ['check', 'verify', 'janch', 'sahi', 'safe', 'जांच', 'तपासा'];
+    
+    const hasMedicineWord = medicineWords.some(w => normalizedInput.includes(w));
+    const hasCheckWord = checkWords.some(w => normalizedInput.includes(w));
+    
+    // If both "medicine" and "check/verify" words present → Verification route
+    if (hasMedicineWord && hasCheckWord) {
+        return { action: 'VERIFY_MEDICINE', confidence: 1 };
+    }
+    
+    // Also: "scan medicine" (without check) → still goes to verification for safety
+    const hasScanWord = ['scan', 'स्कैन', 'स्कॅन'].some(w => normalizedInput.includes(w));
+    if (hasMedicineWord && hasScanWord) {
+        return { action: 'VERIFY_MEDICINE', confidence: 1 };
+    }
 
     // First try exact/includes match (faster, more reliable)
     for (const cmd of commands) {

@@ -63,6 +63,21 @@ const VoiceNavigation = ({ children }) => {
                 'en-US': 'Capturing',
                 'hi-IN': 'फोटो ले रहा हूँ',
                 'mr-IN': 'फोटो घेतो आहे'
+            },
+            'verify': {
+                'en-US': 'Opening verification camera. Show me the medicine.',
+                'hi-IN': 'जांच कैमरा खोल रहा हूँ। दवाई दिखाओ।',
+                'mr-IN': 'तपासणी कॅमेरा उघडतो आहे. औषध दाखवा.'
+            },
+            'alarm': {
+                'en-US': 'Opening emergency alarm',
+                'hi-IN': 'इमरजेंसी अलार्म खोल रहा हूँ',
+                'mr-IN': 'आणीबाणी अलार्म उघडतो आहे'
+            },
+            'stop': {
+                'en-US': '',
+                'hi-IN': '',
+                'mr-IN': ''
             }
         };
         return messages[destination]?.[language] || messages[destination]?.['en-US'] || 'OK';
@@ -205,11 +220,39 @@ const VoiceNavigation = ({ children }) => {
 
                 case 'HELP':
                     const helpMsg = {
-                        'en-US': 'You can say: Home, Scan, Medicines, Reminders, Back, or add a medicine by name',
-                        'hi-IN': 'आप बोल सकते हैं: होम, स्कैन, दवाई, रिमाइंडर, वापस, या दवाई का नाम बोलकर जोड़ सकते हैं',
-                        'mr-IN': 'तुम्ही बोलू शकता: होम, स्कॅन, औषध, रिमाइंडर, मागे, किंवा औषधाचे नाव सांगून जोडू शकता'
+                        'en-US': 'You can say: Home, Scan, Medicines, Reminders, Check Medicine, Emergency, or Stop.',
+                        'hi-IN': 'आप बोल सकते हैं: होम, स्कैन, दवाई, रिमाइंडर, जांच करो, इमरजेंसी, या रुको।',
+                        'mr-IN': 'तुम्ही बोलू शकता: होम, स्कॅन, औषध, रिमाइंडर, तपासा, आणीबाणी, किंवा थांबा.'
                     };
                     speak(helpMsg[language] || helpMsg['en-US']);
+                    break;
+
+                // ═══════════════════════════════════════════════════════════
+                // NEW VOICE COMMANDS - Voice Command Center Expansion
+                // ═══════════════════════════════════════════════════════════
+                case 'VERIFY_MEDICINE':
+                    // Route guard: don't reload if already on verification page
+                    if (location.pathname !== '/scan-medicine') {
+                        speak(getNavigationMessage('verify'));
+                        setTimeout(() => navigate('/scan-medicine'), 300);
+                    } else {
+                        const alreadyVerifyMsg = {
+                            'en-US': 'I am already ready to verify. Show me the medicine.',
+                            'hi-IN': 'मैं पहले से जांच के लिए तैयार हूँ। दवाई दिखाओ।',
+                            'mr-IN': 'मी आधीच तपासणीसाठी तयार आहे. औषध दाखवा.'
+                        };
+                        speak(alreadyVerifyMsg[language] || alreadyVerifyMsg['en-US']);
+                    }
+                    break;
+
+                case 'ALARM':
+                    speak(getNavigationMessage('alarm'));
+                    setTimeout(() => navigate('/alarm'), 300);
+                    break;
+
+                case 'STOP':
+                    // Immediately silence TTS - no feedback needed
+                    window.speechSynthesis.cancel();
                     break;
 
                 default:

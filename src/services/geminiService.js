@@ -5,8 +5,19 @@
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize Gemini
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY);
+// Initialize Gemini with API key validation
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+// DEV: Log API key status (never log the actual key!)
+if (import.meta.env.DEV) {
+    console.log(`🔑 Gemini API Key: ${API_KEY ? 'CONFIGURED (' + API_KEY.substring(0, 8) + '...)' : '❌ MISSING!'}`);
+}
+
+if (!API_KEY) {
+    console.error('❌ CRITICAL: VITE_GEMINI_API_KEY is not set in .env file!');
+}
+
+const genAI = new GoogleGenerativeAI(API_KEY || 'MISSING_KEY');
 
 // Known dangerous drug combinations (Phase 5: Safety Shield)
 const DANGEROUS_COMBOS = [
@@ -127,60 +138,63 @@ const DEFAULT_TIMES = {
  * @returns {Promise<object>} Extracted medicine data with parsed frequencies
  */
 export const analyzePrescription = async (base64Image, mimeType = 'image/jpeg') => {
-    // Models to try in order of preference (Optimized for SPEED)
-    // gemini-1.5-flash is the fastest model for low-latency feedback
+    // Models to try in order of preference
+    // NOTE: Model names available for this API key (as per API query)
     const MODELS_TO_TRY = [
-        'gemini-1.5-flash',           // FASTEST - Primary for speed
-        'gemini-2.5-flash',           // Fallback - newer but maybe slower?
-        'gemini-1.5-pro',             // Fallback - slower but smarter
+        'gemini-2.0-flash',       // Primary: Latest flash with vision
+        'gemini-2.5-flash',       // Fallback: Newer flash model
+        'gemini-flash-latest',    // Last resort: Generic flash
     ];
 
-    // Strict extraction prompt with explicit JSON schema
+    // OCR-optimized prompt for handwritten Indian prescriptions
     // ANTI-HALLUCINATION: Conservative extraction with confidence scoring
-    const prompt = `You are an expert medical prescription OCR system for elderly Indian users.
+    const prompt = `You are an expert pharmacist OCR system specialized in reading handwritten Indian medical prescriptions.
 
-TASK: Analyze this prescription image and extract medicine information.
+TASK: Read this prescription image and extract medicine information.
 
 ═══════════════════════════════════════════════════════════════════════════════
-ANTI-HALLUCINATION RULES (CRITICAL):
-1. Do NOT invent or hallucinate medicines. Only extract medicines CLEARLY VISIBLE and LEGIBLE in the image.
-2. If text is blurry, smudged, or ambiguous, DO NOT GUESS. Skip that medicine entirely.
-3. Do NOT output generic drug names unless EXPLICITLY written on the prescription.
-4. For EACH medicine, include a confidence score (0-100) indicating how certain you are the text was read correctly.
-5. It is BETTER to miss a medicine than to invent a drug that does not exist in the image.
+OCR MODE - CRITICAL INSTRUCTIONS:
+1. This image contains HANDWRITTEN medical text. Focus on reading drug names, dosages, and frequencies.
+2. Ignore layout noise, letterheads, stamps, and irrelevant marks.
+3. Indian doctors often write: Dosage codes like OD, BD, TDS, 1-1-1, 1-0-1
+4. Common Indian medicine formats: "Tab. Dolo 650", "Cap. Omez 20", "Inj. Pan 40"
 ═══════════════════════════════════════════════════════════════════════════════
 
-STRICT OUTPUT FORMAT - Return ONLY this JSON structure:
+ANTI-HALLUCINATION RULES:
+1. Do NOT invent medicines. Only extract what is CLEARLY READABLE.
+2. If text is blurry, smudged, or ambiguous - SKIP that medicine entirely.
+3. For EACH medicine, include a confidence score (0-100).
+4. It is BETTER to miss a medicine than to guess wrong.
+
+OUTPUT FORMAT - Return RAW JSON only (no markdown, no backticks, no preamble):
 {
   "medicines": [
     {
-      "name": "Medicine Name (EXACTLY as written, do not invent)",
+      "name": "Medicine Name (EXACTLY as written)",
       "confidence": 95,
       "dosage": "5mg, 500mg, etc.",
-      "frequency": "EXACT as written: OD, BD, TDS, 1-1-1, 1-0-1, etc.",
+      "frequency": "OD, BD, TDS, 1-1-1, 1-0-1, etc.",
       "duration_days": 5,
       "with_food": true,
       "visual_type": "Tablet | Capsule | Syrup | Injection",
-      "visual_color": "White | Pink | Blue | Red | Yellow | etc.",
+      "visual_color": "White | Pink | Blue | Red | Yellow",
       "special_instructions": "Any specific notes",
-      "probable_reason": "Most likely medical condition this medicine is prescribed for (e.g., 'High blood pressure', 'Diabetes', 'Pain relief')"
+      "probable_reason": "Simple explanation: High BP, Diabetes, Pain, Fever, etc."
     }
   ],
   "extraction_quality": "CLEAR | PARTIAL | POOR",
-  "doctor_name": "Name if visible",
-  "prescription_date": "DD/MM/YYYY if visible",
-  "unreadable_sections": ["List any parts of prescription that could not be read"],
-  "missing_info": ["List fields that were unclear or missing"]
+  "doctor_name": "Name if visible or null",
+  "prescription_date": "DD/MM/YYYY if visible or null",
+  "unreadable_sections": ["Parts that could not be read"],
+  "missing_info": ["Fields that were unclear"]
 }
 
-EXTRACTION RULES:
-1. frequency MUST be extracted exactly as written (OD, BD, TDS, 1-1-1, 1-0-1, etc.)
-2. duration_days MUST be a number. If not specified, use 5 as default.
-3. confidence MUST be 80-100 for clear text, 50-79 for partially visible, below 50 for guesses (avoid these!)
-4. visual_type and visual_color help elderly identify their pills
-5. probable_reason should be simple language elderly can understand
-6. Extract ALL medicines - do not skip any if clearly visible
-7. Return ONLY valid JSON, no markdown or explanation`;
+RULES:
+1. Return ONLY the JSON object - no text before or after
+2. Do NOT wrap in markdown code blocks
+3. duration_days: Use 5 as default if not specified
+4. confidence: 80-100 for clear, 50-79 for partial, skip below 50
+5. Extract ALL medicines that are clearly readable`;
 
     let lastError = null;
 
@@ -326,9 +340,10 @@ EXTRACTION RULES:
  * @returns {Promise<object>} Visual details and expiry information
  */
 export const analyzeMedicinePhoto = async (base64Image, mimeType = 'image/jpeg', expectedMedicine = null) => {
+    // Use available model names for this API key
     const MODELS_TO_TRY = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
+        'gemini-2.0-flash',       // Primary: Latest flash with vision
+        'gemini-2.5-flash',       // Fallback: Newer flash model
     ];
 
     const prompt = `You are analyzing a photo of medicine (tablet, capsule, syrup, or packaging).
@@ -412,10 +427,10 @@ Return ONLY valid JSON, no explanation.`;
  * @returns {object} Match result with verification status
  */
 export const verifyMedicinePhoto = async (base64Image, mimeType = 'image/jpeg', prescriptionMedicines = []) => {
+    // Use available model names for this API key
     const MODELS_TO_TRY = [
-        'gemini-1.5-flash', // Fastest response
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
+        'gemini-2.0-flash',       // Primary: Latest flash with vision
+        'gemini-2.5-flash',       // Fallback: Newer flash model
     ];
 
     const prescriptionList = prescriptionMedicines.map(m => m.name).join(', ');

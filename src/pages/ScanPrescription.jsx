@@ -124,6 +124,11 @@ const ScanPrescription = () => {
             'en-US': 'It is taking too long. Please ensure you have good internet and try again.',
             'hi-IN': 'इसमें बहुत समय लग रहा है। कृपया इंटरनेट की जाँच करें और फिर से प्रयास करें।',
             'mr-IN': 'याला खूप वेळ लागत आहे. कृपया तुमचे इंटरनेट तपासा आणि पुन्हा प्रयत्न करा.'
+        },
+        handwritingError: {
+            'en-US': 'I had trouble reading the doctor\'s handwriting. Please try again with better light.',
+            'hi-IN': 'मुझे डॉक्टर की लिखावट पढ़ने में परेशानी हुई। कृपया बेहतर रोशनी में फिर से कोशिश करें।',
+            'mr-IN': 'मला डॉक्टरांचे हस्ताक्षर वाचण्यात अडचण आली. कृपया चांगल्या प्रकाशात पुन्हा प्रयत्न करा.'
         }
     };
 
@@ -442,9 +447,11 @@ const ScanPrescription = () => {
             
             let errorMessage = err.message;
             
-            // Handle timeout specifically
+            // Handle specific error types with user-friendly messages
             if (errorMessage === 'API_TIMEOUT') {
                 errorMessage = getText('timeoutError');
+            } else if (errorMessage === 'HANDWRITING_PARSE_ERROR' || errorMessage.includes('JSON')) {
+                errorMessage = getText('handwritingError');
             }
             
             setError(errorMessage);
